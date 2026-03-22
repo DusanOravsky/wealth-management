@@ -54,7 +54,12 @@ export function requestAccessToken(clientId: string): Promise<string> {
 interface DriveFile { id: string; modifiedTime: string; }
 
 async function driveGet<T>(url: string, token: string): Promise<T> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  } catch (e) {
+    throw new Error(`Sieťová chyba pri GET (${url.slice(0, 60)}...): ${e instanceof Error ? e.message : String(e)}`);
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`Drive API ${res.status}: ${JSON.stringify(err)}`);
@@ -63,7 +68,8 @@ async function driveGet<T>(url: string, token: string): Promise<T> {
 }
 
 async function findBackupFile(token: string): Promise<DriveFile | null> {
-  const url = `${DRIVE_API}?spaces=appDataFolder&fields=files(id,modifiedTime)&q=name+%3D+'${BACKUP_FILENAME}'`;
+  const q = encodeURIComponent(`name = '${BACKUP_FILENAME}'`);
+  const url = `${DRIVE_API}?spaces=appDataFolder&fields=files(id,modifiedTime)&q=${q}`;
   const data = await driveGet<{ files: DriveFile[] }>(url, token);
   return data.files?.[0] ?? null;
 }
@@ -75,14 +81,16 @@ export async function uploadToDrive(token: string, content: string): Promise<str
 
   if (existing) {
     // Update existing file content
-    const res = await fetch(`${UPLOAD_API}/${existing.id}?uploadType=media&fields=modifiedTime`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: content,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${UPLOAD_API}/${existing.id}?uploadType=media&fields=modifiedTime`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: content,
+      });
+    } catch (e) {
+      throw new Error(`Sieťová chyba pri update: ${e instanceof Error ? e.message : String(e)}`);
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(`Aktualizácia zlyhala ${res.status}: ${JSON.stringify(err)}`);
@@ -93,29 +101,34 @@ export async function uploadToDrive(token: string, content: string): Promise<str
     return ts;
   }
 
-  // Create new file — first create metadata, then upload content
-  const metaRes = await fetch(`${DRIVE_API}?fields=id`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name: BACKUP_FILENAME, parents: ["appDataFolder"] }),
-  });
+  // Create new file — step 1: create metadata
+  let metaRes: Response;
+  try {
+    metaRes = await fetch(`${DRIVE_API}?fields=id`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: BACKUP_FILENAME, parents: ["appDataFolder"] }),
+    });
+  } catch (e) {
+    throw new Error(`Sieťová chyba pri vytváraní súboru: ${e instanceof Error ? e.message : String(e)}`);
+  }
   if (!metaRes.ok) {
     const err = await metaRes.json().catch(() => ({}));
     throw new Error(`Vytvorenie súboru zlyhalo ${metaRes.status}: ${JSON.stringify(err)}`);
   }
   const { id } = await metaRes.json();
 
-  const uploadRes = await fetch(`${UPLOAD_API}/${id}?uploadType=media&fields=modifiedTime`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: content,
-  });
+  // Step 2: upload content
+  let uploadRes: Response;
+  try {
+    uploadRes = await fetch(`${UPLOAD_API}/${id}?uploadType=media&fields=modifiedTime`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: content,
+    });
+  } catch (e) {
+    throw new Error(`Sieťová chyba pri nahrávaní obsahu: ${e instanceof Error ? e.message : String(e)}`);
+  }
   if (!uploadRes.ok) {
     const err = await uploadRes.json().catch(() => ({}));
     throw new Error(`Nahrávanie zlyhalo ${uploadRes.status}: ${JSON.stringify(err)}`);
