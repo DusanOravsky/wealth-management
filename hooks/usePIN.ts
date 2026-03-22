@@ -29,25 +29,49 @@ export function usePIN() {
   }, []);
 
   useEffect(() => {
+    // Safety net: if something hangs, don't leave app stuck on "loading"
+    const timeout = setTimeout(() => {
+      setState((s) => (s === "loading" ? "locked" : s));
+    }, 3000);
+
+    let cancelled = false;
     const stored = loadSettings();
-    if (!stored) { setState("setup"); return; }
+    if (!stored) {
+      clearTimeout(timeout);
+      setState("setup");
+      return;
+    }
     setSettings(stored);
     const sessionPin = getSession();
     if (sessionPin) {
-      verifyPIN(sessionPin, stored.pinHash).then((valid) => {
-        if (valid) {
-          setPin(sessionPin);
-          setState("unlocked");
-          resetAutoLock(stored, sessionPin);
-        } else {
+      verifyPIN(sessionPin, stored.pinHash)
+        .then((valid) => {
+          if (cancelled) return;
+          clearTimeout(timeout);
+          if (valid) {
+            setPin(sessionPin);
+            setState("unlocked");
+            resetAutoLock(stored, sessionPin);
+          } else {
+            clearSession();
+            setState("locked");
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          clearTimeout(timeout);
           clearSession();
           setState("locked");
-        }
-      });
+        });
     } else {
+      clearTimeout(timeout);
       setState("locked");
     }
-    return () => { if (autoLockTimer.current) clearTimeout(autoLockTimer.current); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      if (autoLockTimer.current) clearTimeout(autoLockTimer.current);
+    };
   }, [resetAutoLock]);
 
   // Track user activity to reset auto-lock

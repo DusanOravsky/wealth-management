@@ -1,4 +1,4 @@
-const CACHE = "wm-v3";
+const CACHE = "wm-v4";
 const BASE = "/wealth-management";
 
 const PRECACHE = [
@@ -34,8 +34,13 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
       )
+      .then(() => self.clients.claim())
+      .then(async () => {
+        // Force all open PWA clients to reload so they get fresh JS bundles
+        const clients = await self.clients.matchAll({ type: "window" });
+        clients.forEach((client) => client.navigate(client.url));
+      })
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
