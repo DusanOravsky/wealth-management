@@ -4,6 +4,7 @@ export const STORE_KEYS = {
   SNAPSHOTS: "wm_snapshots",
   GOALS: "wm_goals",
   ALERTS: "wm_alerts",
+  INSURANCE: "wm_insurance",
 } as const;
 
 export const COINGECKO_BASE = "https://api.coingecko.com/api/v3";

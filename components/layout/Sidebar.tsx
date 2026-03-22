@@ -24,6 +24,7 @@ import {
   LineChart,
   Home,
   Bell,
+  ShieldCheck,
 } from "lucide-react";
 
 const navItems = [
@@ -35,6 +36,7 @@ const navItems = [
   { href: "/crypto", label: "Krypto", icon: Bitcoin, color: "#fb923c" },
   { href: "/stocks", label: "Akcie", icon: LineChart, color: "#60a5fa" },
   { href: "/realestate", label: "Nehnuteľnosti", icon: Home, color: "#10b981" },
+  { href: "/insurance", label: "Poistenie", icon: ShieldCheck, color: "#34d399" },
   { href: "/alerts", label: "Alerty", icon: Bell, color: "#fbbf24" },
   { href: "/planning", label: "Plánovanie", icon: BarChart3, color: "#818cf8" },
   { href: "/goals", label: "Ciele", icon: Target, color: "#f472b6" },

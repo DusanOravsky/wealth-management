@@ -156,6 +156,21 @@ export interface PortfolioSummary {
   lastUpdated: string;
 }
 
+// Insurance policy
+export interface Insurance {
+  id: string;
+  name: string;            // e.g. "Povinné ručenie Škoda Octavia"
+  type: "car_liability" | "car_comprehensive" | "property" | "life" | "health" | "travel" | "other";
+  provider: string;        // e.g. "Allianz"
+  policyNumber?: string;
+  annualPremium: number;
+  currency: Currency;
+  startDate: string;       // YYYY-MM-DD
+  endDate: string;         // YYYY-MM-DD
+  autoRenewal: boolean;
+  note?: string;
+}
+
 // Price alert
 export interface PriceAlert {
   id: string;

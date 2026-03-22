@@ -1,4 +1,4 @@
-import type { AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal, PriceAlert } from "./types";
+import type { AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal, PriceAlert, Insurance } from "./types";
 import { STORE_KEYS, MAX_SNAPSHOTS } from "./constants";
 import { encrypt, decrypt } from "./crypto";
 
@@ -113,6 +113,18 @@ export function saveAlerts(alerts: PriceAlert[]): void {
   rawSet(STORE_KEYS.ALERTS, JSON.stringify(alerts));
 }
 
+// ---------- Insurance (plain JSON) ----------
+
+export function loadInsurance(): Insurance[] {
+  const raw = rawGet(STORE_KEYS.INSURANCE);
+  if (!raw) return [];
+  try { return JSON.parse(raw) as Insurance[]; } catch { return []; }
+}
+
+export function saveInsurance(items: Insurance[]): void {
+  rawSet(STORE_KEYS.INSURANCE, JSON.stringify(items));
+}
+
 // ---------- Session (in-memory only) ----------
 
 let _sessionPin: string | null = null;
@@ -146,5 +158,6 @@ export function wipeAll(): void {
   rawRemove(STORE_KEYS.SNAPSHOTS);
   rawRemove(STORE_KEYS.GOALS);
   rawRemove(STORE_KEYS.ALERTS);
+  rawRemove(STORE_KEYS.INSURANCE);
   clearSession();
 }
