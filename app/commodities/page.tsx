@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Pencil, Trash2, TrendingUp, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import type { Commodity, Currency } from "@/lib/types";
-import { CURRENCIES } from "@/lib/constants";
+import { CURRENCIES, COMMODITY_META, FALLBACK_RATES } from "@/lib/constants";
 
 const EMPTY: Omit<Commodity, "id"> = {
   name: "",
@@ -28,7 +28,7 @@ function fmt(n: number, currency = "EUR") {
 }
 
 export default function CommoditiesPage() {
-  const { portfolio, savePortfolio, goldPrice, silverPrice } = useApp();
+  const { portfolio, savePortfolio, goldPrice, silverPrice, rates } = useApp();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Commodity | null>(null);
   const [form, setForm] = useState<Omit<Commodity, "id">>(EMPTY);
@@ -75,11 +75,15 @@ export default function CommoditiesPage() {
 
   function getValueEur(c: Commodity): number {
     const price = getCurrentPrice(c.symbol);
-    if (price === 0) return 0;
-    let oz = c.amount;
-    if (c.unit === "g") oz = c.amount / 31.1035;
-    else if (c.unit === "kg") oz = c.amount * 32.1507;
-    return price * oz;
+    if (price > 0) {
+      let oz = c.amount;
+      if (c.unit === "g") oz = c.amount / 31.1035;
+      else if (c.unit === "kg") oz = c.amount * 32.1507;
+      return price * oz;
+    }
+    // No live price: use purchase price as current value
+    const rate = rates[c.currency] ?? FALLBACK_RATES[c.currency] ?? 1;
+    return (c.amount * c.purchasePrice) / rate;
   }
 
   return (
@@ -173,9 +177,9 @@ export default function CommoditiesPage() {
                 <Select value={form.symbol} onValueChange={(v) => setForm({ ...form, symbol: v ?? "XAU" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="XAU">Zlato (XAU)</SelectItem>
-                    <SelectItem value="XAG">Striebro (XAG)</SelectItem>
-                    <SelectItem value="OTHER">Iné</SelectItem>
+                    {Object.entries(COMMODITY_META).map(([sym, meta]) => (
+                      <SelectItem key={sym} value={sym}>{meta.name} ({sym})</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

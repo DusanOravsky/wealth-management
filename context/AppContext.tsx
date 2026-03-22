@@ -1,13 +1,20 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { usePIN } from "@/hooks/usePIN";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { usePrices } from "@/hooks/usePrices";
-import { loadApiKey } from "@/lib/store";
+import { loadApiKey, loadGoals, saveGoals, loadSnapshots, saveSnapshot } from "@/lib/store";
 import { DEFAULT_CRYPTO_IDS } from "@/lib/constants";
-import type { AppSettings, PortfolioData } from "@/lib/types";
-import type { CryptoPrice } from "@/lib/types";
+import { calcPortfolioSummary, groupByCategory } from "@/lib/portfolio-calc";
+import type {
+  AppSettings,
+  PortfolioData,
+  FinancialGoal,
+  PortfolioSnapshot,
+  PortfolioSummary,
+  CryptoPrice,
+} from "@/lib/types";
 
 interface AppContextValue {
   // PIN / auth
@@ -15,14 +22,17 @@ interface AppContextValue {
   pin: string | null;
   settings: AppSettings | null;
   pinError: string | null;
+  lockoutRemaining: number;
   setupPIN: (pin: string) => Promise<void>;
   unlock: (pin: string) => Promise<void>;
   lock: () => void;
+  changePIN: (current: string, newPin: string) => Promise<boolean>;
   updateSettings: (s: AppSettings) => void;
 
   // Portfolio
   portfolio: PortfolioData | null;
   portfolioLoading: boolean;
+  portfolioSummary: PortfolioSummary | null;
   savePortfolio: (p: PortfolioData) => Promise<void>;
   reloadPortfolio: () => Promise<void>;
 
@@ -34,6 +44,13 @@ interface AppContextValue {
   pricesLoading: boolean;
   pricesError: string | null;
   refreshPrices: () => Promise<void>;
+
+  // Goals
+  goals: FinancialGoal[];
+  saveGoalsData: (goals: FinancialGoal[]) => void;
+
+  // Snapshots
+  snapshots: PortfolioSnapshot[];
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -44,9 +61,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     settings,
     pin,
     error: pinError,
+    lockoutRemaining,
     setupPIN,
     unlock,
     lock,
+    changePIN,
     updateSettings,
   } = usePIN();
 
@@ -60,14 +79,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pinState, pin, reloadPortfolio]);
 
+  // Goals & snapshots (plain JSON, no PIN needed)
+  const [goals, setGoals] = useState<FinancialGoal[]>([]);
+  const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
+
+  useEffect(() => {
+    setGoals(loadGoals());
+    setSnapshots(loadSnapshots());
+  }, []);
+
+  const saveGoalsData = useCallback((newGoals: FinancialGoal[]) => {
+    saveGoals(newGoals);
+    setGoals(newGoals);
+  }, []);
+
   // Gather unique coin IDs from holdings
   const coinIds = useMemo(
     () => [...new Set(portfolio?.crypto.map((h) => h.coinId) ?? [])],
     [portfolio]
   );
 
-  // Get CoinGecko key from settings (decrypt on the fly — async, so we pass null initially)
-  // We load it separately in a useEffect or pass null; prices refresh every 5min so it's fine
   const {
     crypto: cryptoPrices,
     gold: goldPrice,
@@ -78,18 +109,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refresh: refreshPrices,
   } = usePrices(coinIds.length > 0 ? coinIds : DEFAULT_CRYPTO_IDS);
 
+  // Compute portfolio summary
+  const portfolioSummary = useMemo(() => {
+    if (!portfolio) return null;
+    return calcPortfolioSummary(portfolio, {
+      gold: goldPrice,
+      silver: silverPrice,
+      crypto: cryptoPrices,
+      rates,
+    });
+  }, [portfolio, goldPrice, silverPrice, cryptoPrices, rates]);
+
+  // Save daily snapshot when summary is ready
+  const snapshotDateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!portfolioSummary || pricesLoading) return;
+    const today = new Date().toISOString().split("T")[0];
+    if (snapshotDateRef.current === today) return;
+    snapshotDateRef.current = today;
+    const breakdown = groupByCategory(portfolioSummary);
+    saveSnapshot({ date: today, totalEur: portfolioSummary.totalEur, breakdown });
+    setSnapshots(loadSnapshots());
+  }, [portfolioSummary, pricesLoading]);
+
   const value: AppContextValue = useMemo(
     () => ({
       pinState,
       pin,
       settings,
       pinError,
+      lockoutRemaining,
       setupPIN,
       unlock,
       lock,
+      changePIN,
       updateSettings,
       portfolio,
       portfolioLoading,
+      portfolioSummary,
       savePortfolio,
       reloadPortfolio,
       cryptoPrices,
@@ -99,11 +156,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pricesLoading,
       pricesError,
       refreshPrices,
+      goals,
+      saveGoalsData,
+      snapshots,
     }),
     [
-      pinState, pin, settings, pinError, setupPIN, unlock, lock, updateSettings,
-      portfolio, portfolioLoading, savePortfolio, reloadPortfolio,
-      cryptoPrices, goldPrice, silverPrice, rates, pricesLoading, pricesError, refreshPrices,
+      pinState, pin, settings, pinError, lockoutRemaining,
+      setupPIN, unlock, lock, changePIN, updateSettings,
+      portfolio, portfolioLoading, portfolioSummary,
+      savePortfolio, reloadPortfolio,
+      cryptoPrices, goldPrice, silverPrice, rates,
+      pricesLoading, pricesError, refreshPrices,
+      goals, saveGoalsData, snapshots,
     ]
   );
 

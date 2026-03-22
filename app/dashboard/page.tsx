@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
-import { calcPortfolioSummary, groupByCategory } from "@/lib/portfolio-calc";
-import { CURRENCY_SYMBOLS } from "@/lib/constants";
+import { CURRENCY_SYMBOLS, FALLBACK_RATES } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,20 @@ const CATEGORY_LABELS: Record<string, string> = {
   crypto: "Krypto",
 };
 
-function fmt(val: number) {
-  return new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
+function groupByCategory(assets: { category: string; valueEur: number }[]) {
+  return assets.reduce<Record<string, number>>((acc, a) => {
+    acc[a.category] = (acc[a.category] ?? 0) + a.valueEur;
+    return acc;
+  }, {});
+}
+
+function fmt(val: number, currency = "EUR", rates: Record<string, number> = {}) {
+  const rate = rates[currency] ?? FALLBACK_RATES[currency] ?? 1;
+  return new Intl.NumberFormat("sk-SK", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(val * rate);
 }
 
 function pct(val: number, total: number) {
@@ -39,14 +51,25 @@ function pct(val: number, total: number) {
 }
 
 export default function DashboardPage() {
-  const { portfolio, goldPrice, silverPrice, cryptoPrices, rates, pricesLoading, refreshPrices } = useApp();
+  const {
+    portfolioSummary,
+    portfolioLoading,
+    goldPrice,
+    silverPrice,
+    cryptoPrices,
+    rates,
+    pricesLoading,
+    refreshPrices,
+    snapshots,
+    settings,
+  } = useApp();
 
-  const summary = useMemo(() => {
-    if (!portfolio) return null;
-    return calcPortfolioSummary(portfolio, { gold: goldPrice, silver: silverPrice, crypto: cryptoPrices, rates });
-  }, [portfolio, goldPrice, silverPrice, cryptoPrices, rates]);
+  const displayCurrency = settings?.displayCurrency ?? settings?.baseCurrency ?? "EUR";
+  const displayRate = rates[displayCurrency] ?? FALLBACK_RATES[displayCurrency] ?? 1;
+  const displaySymbol = CURRENCY_SYMBOLS[displayCurrency] ?? displayCurrency;
 
-  const grouped = useMemo(() => summary ? groupByCategory(summary) : {}, [summary]);
+  const summary = portfolioSummary;
+  const grouped = summary ? groupByCategory(summary.assets) : {};
 
   const pieData = Object.entries(grouped).map(([key, value]) => ({
     name: CATEGORY_LABELS[key] ?? key,
@@ -54,10 +77,31 @@ export default function DashboardPage() {
     color: CATEGORY_COLORS[key] ?? "#888",
   }));
 
-  if (!portfolio) {
+  // Last 30 snapshots for chart
+  const chartData = snapshots.slice(-30).map((s) => ({
+    date: s.date.slice(5), // MM-DD
+    total: Math.round(s.totalEur * displayRate),
+  }));
+
+  const isLoading = portfolioLoading || pricesLoading;
+
+  if (isLoading && !summary) {
     return (
       <AppShell>
-        <div className="p-8 text-muted-foreground">Načítavam portfólio...</div>
+        <div className="p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Skeleton className="h-72 w-full rounded-xl" />
+            <Skeleton className="h-72 w-full rounded-xl" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+          </div>
+        </div>
       </AppShell>
     );
   }
@@ -69,9 +113,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Prehľad tvojho majetku
-            </p>
+            <p className="text-muted-foreground text-sm mt-1">Prehľad tvojho majetku</p>
           </div>
           <Button variant="outline" size="sm" onClick={refreshPrices} disabled={pricesLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${pricesLoading ? "animate-spin" : ""}`} />
@@ -84,12 +126,23 @@ export default function DashboardPage() {
           <CardContent className="pt-6">
             <p className="text-primary-foreground/70 text-sm">Celkový majetok</p>
             <p className="text-4xl font-bold mt-1">
-              {summary ? fmt(summary.totalEur) : "—"}
+              {summary
+                ? `${displaySymbol}${Math.round(summary.totalEur * displayRate).toLocaleString("sk-SK")}`
+                : "—"}
             </p>
+            {displayCurrency !== "EUR" && summary && (
+              <p className="text-primary-foreground/60 text-sm mt-1">
+                ≈ {new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(summary.totalEur)} EUR
+              </p>
+            )}
             <div className="flex gap-2 mt-3 flex-wrap">
               {Object.entries(grouped).map(([key, value]) => (
-                <Badge key={key} variant="secondary" className="bg-primary-foreground/20 text-primary-foreground border-0">
-                  {CATEGORY_LABELS[key]}: {fmt(value)}
+                <Badge
+                  key={key}
+                  variant="secondary"
+                  className="bg-primary-foreground/20 text-primary-foreground border-0"
+                >
+                  {CATEGORY_LABELS[key]}: {displaySymbol}{Math.round(value * displayRate).toLocaleString("sk-SK")}
                 </Badge>
               ))}
             </div>
@@ -120,7 +173,7 @@ export default function DashboardPage() {
                         <Cell key={i} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v) => fmt(Number(v))} />
+                    <Tooltip formatter={(v) => fmt(Number(v), displayCurrency)} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -150,7 +203,9 @@ export default function DashboardPage() {
                         <span className="text-sm truncate max-w-[180px]">{a.label}</span>
                       </div>
                       <div className="text-right shrink-0">
-                        <span className="text-sm font-medium">{fmt(a.valueEur)}</span>
+                        <span className="text-sm font-medium">
+                          {displaySymbol}{Math.round(a.valueEur * displayRate).toLocaleString("sk-SK")}
+                        </span>
                         <span className="text-xs text-muted-foreground ml-2">
                           {pct(a.valueEur, summary.totalEur)}
                         </span>
@@ -158,21 +213,83 @@ export default function DashboardPage() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-muted-foreground text-sm">Žiadne aktíva. Pridaj ich v jednotlivých sekciách.</p>
+                  <p className="text-muted-foreground text-sm">
+                    Žiadne aktíva. Pridaj ich v jednotlivých sekciách.
+                  </p>
                 )}
               </div>
             </CardContent>
           </Card>
         </div>
 
+        {/* History chart */}
+        {chartData.length > 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Vývoj majetku (posledných 30 dní)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="totalGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(v) => `${displaySymbol}${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={(v) =>
+                      `${displaySymbol}${Number(v).toLocaleString("sk-SK")}`
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="total"
+                    name="Majetok"
+                    stroke="#6366f1"
+                    fill="url(#totalGrad)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Quick stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Zlato (XAU/EUR)" value={goldPrice > 0 ? `${CURRENCY_SYMBOLS["EUR"]}${goldPrice.toFixed(0)}` : "—"} sub="za oz" />
-          <StatCard label="Striebro (XAG/EUR)" value={silverPrice > 0 ? `${CURRENCY_SYMBOLS["EUR"]}${silverPrice.toFixed(2)}` : "—"} sub="za oz" />
-          <StatCard label="Bitcoin" value={cryptoPrices.find(p => p.id === "bitcoin") ? fmt(cryptoPrices.find(p => p.id === "bitcoin")!.current_price) : "—"} sub="aktuálna cena" />
+          <StatCard
+            label="Zlato (XAU/EUR)"
+            value={goldPrice > 0 ? `€${goldPrice.toFixed(0)}` : "—"}
+            sub="za oz"
+          />
+          <StatCard
+            label="Striebro (XAG/EUR)"
+            value={silverPrice > 0 ? `€${silverPrice.toFixed(2)}` : "—"}
+            sub="za oz"
+          />
+          <StatCard
+            label="Bitcoin"
+            value={
+              cryptoPrices.find((p) => p.id === "bitcoin")
+                ? `€${cryptoPrices.find((p) => p.id === "bitcoin")!.current_price.toLocaleString("sk-SK")}`
+                : "—"
+            }
+            sub="aktuálna cena"
+          />
           <StatCard
             label="Krypto portfólio"
-            value={grouped["crypto"] ? fmt(grouped["crypto"]) : "€0"}
+            value={
+              grouped["crypto"]
+                ? `${displaySymbol}${Math.round(grouped["crypto"] * displayRate).toLocaleString("sk-SK")}`
+                : `${displaySymbol}0`
+            }
             sub={pct(grouped["crypto"] ?? 0, summary?.totalEur ?? 0)}
           />
         </div>

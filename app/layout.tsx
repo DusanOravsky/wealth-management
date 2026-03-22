@@ -3,6 +3,8 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "next-themes";
+import { PWARegister } from "@/components/PWARegister";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -12,6 +14,7 @@ const geistSans = Geist({
 export const metadata: Metadata = {
   title: "Wealth Management",
   description: "Personal wealth management dashboard",
+  manifest: "/wealth-management/manifest.json",
 };
 
 export default function RootLayout({
@@ -20,12 +23,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="sk" className={`${geistSans.variable} h-full antialiased`}>
+    <html lang="sk" className={`${geistSans.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <meta name="theme-color" content="#000000" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <link rel="apple-touch-icon" href="/wealth-management/icon-192.png" />
+      </head>
       <body className="min-h-full bg-background text-foreground">
-        <AppProvider>
-          {children}
-          <Toaster richColors position="top-right" />
-        </AppProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <AppProvider>
+            {children}
+            <Toaster richColors position="top-right" />
+            <PWARegister />
+          </AppProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

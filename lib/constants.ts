@@ -1,17 +1,12 @@
 export const STORE_KEYS = {
   SETTINGS: "wm_settings",
   PORTFOLIO: "wm_portfolio",
-  SESSION: "wm_session", // sessionStorage key
+  SNAPSHOTS: "wm_snapshots",
+  GOALS: "wm_goals",
 } as const;
 
 export const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
 export const BINANCE_BASE = "https://api.binance.com";
-
-// CoinGecko commodity IDs
-export const COMMODITY_IDS: Record<string, string> = {
-  XAU: "gold",
-  XAG: "silver",
-};
 
 // Default crypto coins to show if no holdings
 export const DEFAULT_CRYPTO_IDS = [
@@ -40,3 +35,18 @@ export const FALLBACK_RATES: Record<string, number> = {
 
 export const PIN_MIN_LENGTH = 4;
 export const PIN_MAX_LENGTH = 8;
+export const PIN_MAX_ATTEMPTS = 5;
+export const PIN_LOCKOUT_MS = 30_000; // 30 seconds
+export const AUTO_LOCK_DEFAULT_MINUTES = 10;
+
+// Commodity symbols with metadata
+export const COMMODITY_META: Record<string, { name: string; metals_live_id?: string }> = {
+  XAU: { name: "Zlato", metals_live_id: "gold" },
+  XAG: { name: "Striebro", metals_live_id: "silver" },
+  XPT: { name: "Platina", metals_live_id: "platinum" },
+  XPD: { name: "Paládium", metals_live_id: "palladium" },
+  RE: { name: "Nehnuteľnosť" },
+  OTHER: { name: "Iné" },
+};
+
+export const MAX_SNAPSHOTS = 365; // keep 1 year of daily snapshots

@@ -3,7 +3,7 @@ export type Currency = "EUR" | "USD" | "CZK" | "GBP";
 export interface Commodity {
   id: string;
   name: string;
-  symbol: "XAU" | "XAG" | string;
+  symbol: "XAU" | "XAG" | "XPT" | "XPD" | string;
   unit: "oz" | "g" | "kg";
   amount: number;
   purchasePrice: number;
@@ -24,7 +24,7 @@ export interface PensionEntry {
   provider: string;
   value: number;
   currency: Currency;
-  updatedAt: string; // ISO date string
+  updatedAt: string;
   note?: string;
 }
 
@@ -40,8 +40,8 @@ export interface BankAccount {
 
 export interface CryptoHolding {
   id: string;
-  coinId: string; // CoinGecko coin ID e.g. "bitcoin"
-  symbol: string; // e.g. "BTC"
+  coinId: string;
+  symbol: string;
   name: string;
   amount: number;
   exchange: "binance" | "other";
@@ -60,18 +60,40 @@ export interface PortfolioData {
 }
 
 export interface AppSettings {
-  pinHash: string; // SHA-256 hex of PIN
-  salt: string; // base64 salt for key derivation
-  binanceKey?: string; // encrypted base64
-  binanceSecret?: string; // encrypted base64
-  coingeckoKey?: string; // encrypted base64
-  claudeKey?: string; // encrypted base64
+  pinHash: string;
+  salt: string;
+  pinAttempts?: number;
+  pinLockedUntil?: number; // timestamp ms
+  binanceKey?: string;
+  binanceSecret?: string;
+  coingeckoKey?: string;
+  claudeKey?: string;
   baseCurrency: Currency;
+  displayCurrency?: Currency;
+  autoLockMinutes?: number; // default 5
 }
 
 export interface StoredData {
   settings: AppSettings | null;
   portfolio: PortfolioData | null;
+}
+
+// Portfolio snapshot for history chart
+export interface PortfolioSnapshot {
+  date: string; // YYYY-MM-DD
+  totalEur: number;
+  breakdown: Record<string, number>; // category -> EUR value
+}
+
+// Financial goal
+export interface FinancialGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currency: Currency;
+  deadline?: string; // ISO date
+  color?: string;
+  note?: string;
 }
 
 // Price data from CoinGecko
