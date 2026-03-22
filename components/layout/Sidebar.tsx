@@ -131,6 +131,9 @@ export function Sidebar({ onClose }: SidebarProps) {
           <LogOut className="w-4 h-4" style={{ color: "#f87171" }} />
           Zamknúť
         </button>
+        <p className="text-center text-xs px-3 pt-1 pb-0.5" style={{ color: "rgba(255,255,255,0.2)" }}>
+          v{process.env.NEXT_PUBLIC_APP_VERSION}
+        </p>
       </div>
     </aside>
   );
