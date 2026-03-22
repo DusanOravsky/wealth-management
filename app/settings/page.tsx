@@ -58,10 +58,16 @@ export default function SettingsPage() {
   const [pwaInstalled] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches
   );
+  const [pwaPlatform, setPwaPlatform] = useState<"ios" | "android" | "desktop" | null>(null);
   const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
   const pwaPromptRef = useRef<{ prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> } | null>(null);
 
   useEffect(() => {
+    const ua = navigator.userAgent;
+    const isIOS = /iphone|ipad|ipod/i.test(ua);
+    const isAndroid = /android/i.test(ua);
+    setPwaPlatform(isIOS ? "ios" : isAndroid ? "android" : "desktop");
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const captured = (window as any).__wm_install_prompt;
     if (captured) { pwaPromptRef.current = captured; setPwaInstallAvailable(true); }
@@ -512,26 +518,53 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {pwaInstalled ? (
-              <p className="text-sm text-green-600 dark:text-green-400">Aplikácia je nainštalovaná.</p>
+              <p className="text-sm text-green-600 dark:text-green-400 font-medium">✓ Aplikácia je nainštalovaná</p>
             ) : (
               <div className="space-y-3">
+                {/* Native install button — only if Chrome offers it */}
                 {pwaInstallAvailable && (
-                  <Button size="sm" onClick={handlePWAInstall}
+                  <Button size="sm" className="w-full" onClick={handlePWAInstall}
                     style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none", color: "white" }}>
                     <Smartphone className="w-4 h-4 mr-2" />
                     Inštalovať aplikáciu
                   </Button>
                 )}
-                <div className="rounded-md bg-muted/50 p-3 space-y-2 text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground text-sm">Ako nainštalovať:</p>
-                  <p><strong>Android (Chrome):</strong> Menu (⋮) → <em>Pridať na plochu</em> alebo <em>Inštalovať aplikáciu</em></p>
-                  <p className="flex items-center gap-1 flex-wrap">
-                    <strong>iPhone/iPad (Safari):</strong> <Share2 className="inline w-3.5 h-3.5 mx-0.5 shrink-0" /> → <em>Pridať na plochu</em>
-                  </p>
-                  <p><strong>Desktop (Chrome/Edge):</strong> Ikona inštalácie v adresnom riadku</p>
-                </div>
-                <Button variant="outline" size="sm" className="text-xs"
-                  onClick={() => { localStorage.removeItem("wm_pwa_dismissed"); toast.success("Banner resetovaný."); }}>
+
+                {/* Platform-specific step-by-step */}
+                {pwaPlatform === "android" && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <p className="text-sm font-semibold">Inštalácia na Android (Chrome)</p>
+                    <ol className="text-sm space-y-1.5 list-none">
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">1</span>Klikni na <strong>⋮</strong> (tri bodky vpravo hore v Chrome)</li>
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">2</span>Vyber <strong>„Pridať na plochu"</strong> alebo <strong>„Inštalovať aplikáciu"</strong></li>
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">3</span>Potvrď tlačidlom <strong>„Pridať"</strong></li>
+                    </ol>
+                  </div>
+                )}
+
+                {pwaPlatform === "ios" && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <p className="text-sm font-semibold">Inštalácia na iPhone / iPad (Safari)</p>
+                    <ol className="text-sm space-y-1.5 list-none">
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">1</span>Otvor túto stránku v <strong>Safari</strong> (nie Chrome)</li>
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">2</span>Klikni na ikonu <Share2 className="inline w-4 h-4 mx-0.5 align-middle" /> (<strong>Zdieľať</strong>) v spodnej lište</li>
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">3</span>Vyber <strong>„Pridať na plochu"</strong> a potvrď</li>
+                    </ol>
+                  </div>
+                )}
+
+                {pwaPlatform === "desktop" && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <p className="text-sm font-semibold">Inštalácia na počítači (Chrome / Edge)</p>
+                    <ol className="text-sm space-y-1.5 list-none">
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">1</span>V adresnom riadku klikni na ikonu <strong>⊕</strong> alebo <strong>počítača</strong> úplne vpravo</li>
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">2</span>Klikni <strong>„Inštalovať"</strong></li>
+                    </ol>
+                  </div>
+                )}
+
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground w-full"
+                  onClick={() => { localStorage.removeItem("wm_pwa_dismissed"); toast.success("Banner resetovaný — obnov stránku."); }}>
                   Znovu zobraziť inštalačný banner
                 </Button>
               </div>

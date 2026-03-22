@@ -271,11 +271,31 @@ export async function exportQRPayload(pin: string, salt: string): Promise<string
       monthlyIncome: settings.monthlyIncome,
     } : undefined,
   };
-  return compressB64(JSON.stringify(payload));
+  const json = JSON.stringify(payload);
+  try {
+    return await compressB64(json);
+  } catch {
+    // Fallback: plain base64url (no compression) — works for small portfolios
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(json);
+    let binary = "";
+    bytes.forEach((b) => (binary += String.fromCharCode(b)));
+    return "0" + btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  }
 }
 
 export async function importQRPayload(encoded: string, pin: string, salt: string): Promise<void> {
-  const json = await decompressB64(encoded);
+  // Detect fallback encoding (prefixed with "0")
+  let json: string;
+  if (encoded.startsWith("0")) {
+    const standard = encoded.slice(1).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(standard);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    json = new TextDecoder().decode(bytes);
+  } else {
+    json = await decompressB64(encoded);
+  }
   const data = JSON.parse(json);
   if (data.portfolio) await savePortfolio(data.portfolio as PortfolioData, pin, salt);
   if (data.s) {
