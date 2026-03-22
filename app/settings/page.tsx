@@ -22,6 +22,7 @@ import { CURRENCIES, AUTO_LOCK_DEFAULT_MINUTES, PIN_MIN_LENGTH } from "@/lib/con
 import type { Currency } from "@/lib/types";
 import { exportQRPayload, importQRPayload } from "@/lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { encode as qrEncode } from "uqr";
 
 export default function SettingsPage() {
   const { pin, settings, updateSettings, lock, changePIN, reloadPortfolio } = useApp();
@@ -48,7 +49,7 @@ export default function SettingsPage() {
 
   // QR transfer
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
   const [qrScanInput, setQrScanInput] = useState("");
   const [qrImportLoading, setQrImportLoading] = useState(false);
@@ -164,14 +165,29 @@ export default function SettingsPage() {
   async function openQRDialog() {
     if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
     setQrDialogOpen(true);
-    setQrDataUrl(null);
+    setQrSvg(null);
     setQrLoading(true);
     try {
       const encoded = await exportQRPayload(pin, settings.salt);
       const url = `https://dusanoravsky.github.io/wealth-management/#qr=${encoded}`;
-      const QRCode = (await import("qrcode")).default;
-      const dataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: "L", width: 320, margin: 2 });
-      setQrDataUrl(dataUrl);
+      const qr = qrEncode(url, { ecc: "L" });
+      const size = qr.size;
+      const cell = 4;
+      const pad = 16;
+      const total = size * cell + pad * 2;
+      const rects: string[] = [];
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (qr.data[r][c]) {
+            rects.push(`<rect x="${pad + c * cell}" y="${pad + r * cell}" width="${cell}" height="${cell}"/>`);
+          }
+        }
+      }
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${total}" viewBox="0 0 ${total} ${total}">
+  <rect width="${total}" height="${total}" fill="white"/>
+  <g fill="black">${rects.join("")}</g>
+</svg>`;
+      setQrSvg(svg);
     } catch {
       toast.error("Chyba pri generovaní QR kódu.");
     } finally {
@@ -669,10 +685,12 @@ export default function SettingsPage() {
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-2">
             {qrLoading && <p className="text-sm text-muted-foreground">Generujem QR kód...</p>}
-            {qrDataUrl && (
+            {qrSvg && (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrDataUrl} alt="QR kód" className="rounded-lg border w-64 h-64" />
+                <div
+                  className="rounded-lg border bg-white p-2"
+                  dangerouslySetInnerHTML={{ __html: qrSvg }}
+                />
                 <p className="text-xs text-muted-foreground text-center">
                   Naskenuj tento kód mobilom (photo app alebo QR scanner). Otvorí sa aplikácia s možnosťou importu.
                 </p>
