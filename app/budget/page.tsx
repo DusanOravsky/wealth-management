@@ -242,9 +242,16 @@ export default function BudgetPage() {
               </Card>
             )}
 
-            {/* Category progress */}
+            {/* Category progress — inline edit */}
             <Card>
-              <CardHeader><CardTitle className="text-base">Plnenie rozpočtu</CardTitle></CardHeader>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Plnenie rozpočtu</CardTitle>
+                  <Button size="sm" variant="outline" onClick={openAddCat}>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />Nová kategória
+                  </Button>
+                </div>
+              </CardHeader>
               <CardContent className="space-y-4">
                 {categories.map((cat) => {
                   const spent = catTotals[cat.id] ?? 0;
@@ -254,9 +261,18 @@ export default function BudgetPage() {
                     <div key={cat.id}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium">{cat.icon} {cat.name}</span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <span className="text-xs text-muted-foreground">{fmt(spent)} / {fmt(cat.monthlyLimit)}</span>
                           {over && <Badge variant="destructive" className="text-xs">Prekročené</Badge>}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            title="Zmeniť limit"
+                            onClick={() => openEditCat(cat)}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
                         </div>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2">
@@ -264,6 +280,10 @@ export default function BudgetPage() {
                           className="h-2 rounded-full transition-all"
                           style={{ width: `${pct}%`, background: over ? "#ef4444" : cat.color }}
                         />
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
+                        <span>{pct.toFixed(0)}% z limitu</span>
+                        <span>zostatok: {fmt(Math.max(0, cat.monthlyLimit - spent))}</span>
                       </div>
                     </div>
                   );
