@@ -1,4 +1,4 @@
-const CACHE = "wm-v1";
+const CACHE = "wm-v2";
 const BASE = "/wealth-management";
 
 self.addEventListener("install", (event) => {
@@ -23,6 +23,9 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // Only cache same-origin requests — skip external APIs (googleapis, metals.live, etc.)
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {

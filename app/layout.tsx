@@ -26,6 +26,7 @@ export default function RootLayout({
     <html lang="sk" className={`${geistSans.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#000000" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <link rel="apple-touch-icon" href="/wealth-management/icon-192.png" />
