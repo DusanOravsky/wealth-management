@@ -1,11 +1,19 @@
 // Google Drive sync via Google Identity Services (GIS) + Drive REST API
 // Uses appDataFolder scope — backup file is hidden from user's Drive, only this app can see it.
+// Token is passed as ?access_token= query param instead of Authorization header to avoid
+// CORS preflight issues (Authorization is a non-simple header that triggers OPTIONS preflight).
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files";
 const BACKUP_FILENAME = "wealth-management-backup.json";
 export const GDRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 const LAST_SYNC_KEY = "wm_gdrive_last_sync";
+
+/** Appends access_token as query param — avoids Authorization header CORS preflight. */
+function withToken(url: string, token: string): string {
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}access_token=${encodeURIComponent(token)}`;
+}
 
 // ── GIS script loading ────────────────────────────────────────────────────────
 
@@ -56,9 +64,10 @@ interface DriveFile { id: string; modifiedTime: string; }
 async function driveGet<T>(url: string, token: string): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    // GET with access_token param = simple request, no CORS preflight triggered
+    res = await fetch(withToken(url, token));
   } catch (e) {
-    throw new Error(`Sieťová chyba pri GET (${url.slice(0, 60)}...): ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`Sieťová chyba pri GET: ${e instanceof Error ? e.message : String(e)}`);
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -80,14 +89,13 @@ export async function uploadToDrive(token: string, content: string): Promise<str
   const existing = await findBackupFile(token);
 
   if (existing) {
-    // Update existing file content
+    // Update existing file content (token via query param, no Authorization header)
     let res: Response;
     try {
-      res = await fetch(`${UPLOAD_API}/${existing.id}?uploadType=media&fields=modifiedTime`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: content,
-      });
+      res = await fetch(
+        withToken(`${UPLOAD_API}/${existing.id}?uploadType=media&fields=modifiedTime`, token),
+        { method: "PATCH", headers: { "Content-Type": "application/json" }, body: content }
+      );
     } catch (e) {
       throw new Error(`Sieťová chyba pri update: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -104,9 +112,9 @@ export async function uploadToDrive(token: string, content: string): Promise<str
   // Create new file — step 1: create metadata
   let metaRes: Response;
   try {
-    metaRes = await fetch(`${DRIVE_API}?fields=id`, {
+    metaRes = await fetch(withToken(`${DRIVE_API}?fields=id`, token), {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: BACKUP_FILENAME, parents: ["appDataFolder"] }),
     });
   } catch (e) {
@@ -121,11 +129,10 @@ export async function uploadToDrive(token: string, content: string): Promise<str
   // Step 2: upload content
   let uploadRes: Response;
   try {
-    uploadRes = await fetch(`${UPLOAD_API}/${id}?uploadType=media&fields=modifiedTime`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: content,
-    });
+    uploadRes = await fetch(
+      withToken(`${UPLOAD_API}/${id}?uploadType=media&fields=modifiedTime`, token),
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: content }
+    );
   } catch (e) {
     throw new Error(`Sieťová chyba pri nahrávaní obsahu: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -145,9 +152,7 @@ export async function downloadFromDrive(token: string): Promise<{ content: strin
   const file = await findBackupFile(token);
   if (!file) return null;
 
-  const res = await fetch(`${DRIVE_API}/${file.id}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetch(withToken(`${DRIVE_API}/${file.id}?alt=media`, token));
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(`Sťahovanie zlyhalo ${res.status}: ${JSON.stringify(err)}`);
