@@ -53,32 +53,26 @@ export async function fetchSimplePrices(
   return res.json();
 }
 
-// Fetch physical gold & silver spot prices from metals.live (free, no key required)
-// metals.live returns USD/oz — caller passes EUR rates to avoid double API call.
-// Falls back to PAX Gold on CoinGecko if metals.live is unavailable.
+// Fetch physical gold & silver spot prices.
+// Primary: fawazahmed0 currency API (GitHub CDN, free, CORS, no key needed)
+//   XAU = troy oz of gold per 1 EUR → gold price = 1/xau EUR/oz
+//   XAG = troy oz of silver per 1 EUR → silver price = 1/xag EUR/oz
+// Fallback: PAX Gold (PAXG) on CoinGecko for gold; silver stays 0.
 export async function fetchCommodityPrices(
   apiKey?: string | null,
-  usdToEur?: number, // pass 1/rates.USD from fetchExchangeRates to avoid double call
 ): Promise<{ gold: number; silver: number }> {
-  const eurConvert = usdToEur ?? (1 / 1.09); // fallback if not provided
-
   try {
-    const res = await fetch("https://api.metals.live/v1/spot/gold,silver");
+    const res = await fetch(
+      "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json"
+    );
     if (res.ok) {
-      // metals.live returns an array: [{"gold": 1900}, {"silver": 23}]
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw: any = await res.json();
-      let gold = 0, silver = 0;
-      if (Array.isArray(raw)) {
-        for (const item of raw) {
-          if (item.gold !== undefined) gold = item.gold;
-          if (item.silver !== undefined) silver = item.silver;
-        }
-      } else {
-        gold = raw.gold ?? 0;
-        silver = raw.silver ?? 0;
+      const data = await res.json();
+      const rates = data?.eur ?? {};
+      const xau: number = rates.xau ?? 0;
+      const xag: number = rates.xag ?? 0;
+      if (xau > 0) {
+        return { gold: 1 / xau, silver: xag > 0 ? 1 / xag : 0 };
       }
-      return { gold: gold * eurConvert, silver: silver * eurConvert };
     }
   } catch {
     // fall through to CoinGecko fallback
@@ -96,7 +90,7 @@ export async function fetchCommodityPrices(
       const data = await res.json();
       return {
         gold: data["pax-gold"]?.eur ?? 0,
-        silver: 0, // no reliable CoinGecko proxy for physical silver
+        silver: 0,
       };
     }
   } catch {

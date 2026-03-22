@@ -1,8 +1,9 @@
 // Google Drive sync via Google Identity Services (GIS) + Drive REST API
 // Uses appDataFolder scope — backup file is hidden from user's Drive, only this app can see it.
 
-const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
-const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files";
+// content.googleapis.com is the CORS-friendly endpoint used by Google's GAPI client library
+const DRIVE_API = "https://content.googleapis.com/drive/v3/files";
+const UPLOAD_API = "https://content.googleapis.com/upload/drive/v3/files";
 const BACKUP_FILENAME = "wealth-management-backup.json";
 export const GDRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 const LAST_SYNC_KEY = "wm_gdrive_last_sync";

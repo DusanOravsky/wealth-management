@@ -511,14 +511,15 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle className="text-base">CoinGecko API</CardTitle>
             <CardDescription>
-              Voliteľný API kľúč pre vyšší rate limit. Bez kľúča funguje free tier (30 req/min).
+              Od roku 2024 CoinGecko vyžaduje API kľúč aj pre free tier — bez neho blokuje requesty z browsera (CORS chyba).
+              Registrácia zdarma na <strong>coingecko.com</strong> → Developer Dashboard → Demo API Key.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Input
                 type={showKeys ? "text" : "password"}
-                placeholder={settings?.coingeckoKey ? "Kľúč je uložený — zadaj nový pre zmenu" : "CoinGecko Demo API Key"}
+                placeholder={settings?.coingeckoKey ? "Kľúč je uložený — zadaj nový pre zmenu" : "CoinGecko Demo API Key (povinné)"}
                 value={coingeckoKey}
                 onChange={(e) => setCoingeckoKey(e.target.value)}
                 className={keyInputClass}
@@ -528,7 +529,7 @@ export default function SettingsPage() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              {settings?.coingeckoKey ? "✓ API Key uložený" : "Nepovinné — bez kľúča funguje free tier"}
+              {settings?.coingeckoKey ? "✓ API Key uložený" : "⚠ Bez kľúča sa ceny krypta nenačítajú"}
             </p>
           </CardContent>
         </Card>

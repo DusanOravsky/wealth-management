@@ -32,12 +32,10 @@ export function usePrices(
     if (coinIds.length === 0) return;
     setPrices((p) => ({ ...p, loading: true, error: null }));
     try {
-      // Fetch rates first to pass usdToEur into fetchCommodityPrices (avoids double exchange rate call)
-      const rates = await fetchExchangeRates();
-      const usdToEur = 1 / (rates.USD ?? 1.09);
-      const [crypto, commodities] = await Promise.all([
+      const [rates, crypto, commodities] = await Promise.all([
+        fetchExchangeRates(),
         fetchCryptoPrices(coinIds, coingeckoApiKey),
-        fetchCommodityPrices(coingeckoApiKey, usdToEur),
+        fetchCommodityPrices(coingeckoApiKey),
       ]);
       setPrices({
         crypto,
