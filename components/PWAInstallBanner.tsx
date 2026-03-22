@@ -17,6 +17,8 @@ if (typeof window !== "undefined") {
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     _capturedPrompt = e as BeforeInstallPromptEvent;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__wm_install_prompt = _capturedPrompt;
   });
 }
 

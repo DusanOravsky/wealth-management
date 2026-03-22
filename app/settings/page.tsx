@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { saveApiKey, exportBackup, importBackup, wipeAll } from "@/lib/store";
@@ -15,14 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User, Cloud, CloudDownload, QrCode, ScanLine } from "lucide-react";
+import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User, Cloud, CloudDownload, QrCode, ScanLine, Smartphone, Share2 } from "lucide-react";
 import { loadGIS, requestAccessToken, uploadToDrive, downloadFromDrive, getLastSync } from "@/lib/gdrive";
 import { toast } from "sonner";
 import { CURRENCIES, AUTO_LOCK_DEFAULT_MINUTES, PIN_MIN_LENGTH } from "@/lib/constants";
 import type { Currency } from "@/lib/types";
 import { exportQRPayload, importQRPayload } from "@/lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { encode as qrEncode } from "uqr";
+import { renderSVG } from "uqr";
 
 export default function SettingsPage() {
   const { pin, settings, updateSettings, lock, changePIN, reloadPortfolio } = useApp();
@@ -53,6 +53,26 @@ export default function SettingsPage() {
   const [qrLoading, setQrLoading] = useState(false);
   const [qrScanInput, setQrScanInput] = useState("");
   const [qrImportLoading, setQrImportLoading] = useState(false);
+
+  // PWA install
+  const [pwaInstalled] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches
+  );
+  const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
+  const pwaPromptRef = useRef<{ prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> } | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const captured = (window as any).__wm_install_prompt;
+    if (captured) { pwaPromptRef.current = captured; setPwaInstallAvailable(true); }
+    const handler = (e: Event) => {
+      e.preventDefault();
+      pwaPromptRef.current = e as unknown as typeof pwaPromptRef.current;
+      setPwaInstallAvailable(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
 
   async function saveKey(
     field: "binanceKey" | "binanceSecret" | "coingeckoKey" | "claudeKey",
@@ -162,6 +182,12 @@ export default function SettingsPage() {
     }
   }
 
+  async function handlePWAInstall() {
+    if (pwaPromptRef.current) {
+      await pwaPromptRef.current.prompt();
+    }
+  }
+
   async function openQRDialog() {
     if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
     setQrDialogOpen(true);
@@ -170,26 +196,10 @@ export default function SettingsPage() {
     try {
       const encoded = await exportQRPayload(pin, settings.salt);
       const url = `https://dusanoravsky.github.io/wealth-management/#qr=${encoded}`;
-      const qr = qrEncode(url, { ecc: "L" });
-      const size = qr.size;
-      const cell = 4;
-      const pad = 16;
-      const total = size * cell + pad * 2;
-      const rects: string[] = [];
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          if (qr.data[r][c]) {
-            rects.push(`<rect x="${pad + c * cell}" y="${pad + r * cell}" width="${cell}" height="${cell}"/>`);
-          }
-        }
-      }
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${total}" viewBox="0 0 ${total} ${total}">
-  <rect width="${total}" height="${total}" fill="white"/>
-  <g fill="black">${rects.join("")}</g>
-</svg>`;
+      const svg = renderSVG(url, { ecc: "L" });
       setQrSvg(svg);
-    } catch {
-      toast.error("Chyba pri generovaní QR kódu.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Chyba pri generovaní QR kódu.");
     } finally {
       setQrLoading(false);
     }
@@ -487,6 +497,45 @@ export default function SettingsPage() {
                 Import
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* PWA Install */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Smartphone className="w-4 h-4" /> Inštalácia na plochu
+            </CardTitle>
+            <CardDescription>
+              Pridaj aplikáciu na domovskú obrazovku pre rýchly prístup offline.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {pwaInstalled ? (
+              <p className="text-sm text-green-600 dark:text-green-400">Aplikácia je nainštalovaná.</p>
+            ) : (
+              <div className="space-y-3">
+                {pwaInstallAvailable && (
+                  <Button size="sm" onClick={handlePWAInstall}
+                    style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none", color: "white" }}>
+                    <Smartphone className="w-4 h-4 mr-2" />
+                    Inštalovať aplikáciu
+                  </Button>
+                )}
+                <div className="rounded-md bg-muted/50 p-3 space-y-2 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground text-sm">Ako nainštalovať:</p>
+                  <p><strong>Android (Chrome):</strong> Menu (⋮) → <em>Pridať na plochu</em> alebo <em>Inštalovať aplikáciu</em></p>
+                  <p className="flex items-center gap-1 flex-wrap">
+                    <strong>iPhone/iPad (Safari):</strong> <Share2 className="inline w-3.5 h-3.5 mx-0.5 shrink-0" /> → <em>Pridať na plochu</em>
+                  </p>
+                  <p><strong>Desktop (Chrome/Edge):</strong> Ikona inštalácie v adresnom riadku</p>
+                </div>
+                <Button variant="outline" size="sm" className="text-xs"
+                  onClick={() => { localStorage.removeItem("wm_pwa_dismissed"); toast.success("Banner resetovaný."); }}>
+                  Znovu zobraziť inštalačný banner
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
