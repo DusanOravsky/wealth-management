@@ -10,15 +10,11 @@ export const STORE_KEYS = {
 } as const;
 
 export const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
+export const COINCAP_BASE = "https://api.coincap.io/v2";
 export const BINANCE_BASE = "https://api.binance.com";
 
-// Default crypto coins to show if no holdings
-export const DEFAULT_CRYPTO_IDS = [
-  "bitcoin",
-  "ethereum",
-  "binancecoin",
-  "solana",
-];
+// Default crypto symbols to show if no holdings (used with CoinCap)
+export const DEFAULT_CRYPTO_SYMBOLS = ["BTC", "ETH", "BNB", "SOL"];
 
 export const CURRENCIES = ["EUR", "USD", "CZK", "GBP"] as const;
 

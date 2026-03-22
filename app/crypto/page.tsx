@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { CryptoHolding } from "@/lib/types";
 import { fetchBinanceBalances } from "@/lib/binance";
@@ -33,10 +33,11 @@ export default function CryptoPage() {
   const [form, setForm] = useState<Omit<CryptoHolding, "id">>(EMPTY);
   const [binanceLoading, setBinanceLoading] = useState(false);
 
+  const csvRef = useRef<HTMLInputElement>(null);
   const holdings = portfolio?.crypto ?? [];
 
   const totalEur = holdings.reduce((sum, h) => {
-    const price = cryptoPrices.find((p) => p.id === h.coinId);
+    const price = cryptoPrices.find((p) => p.symbol === h.symbol.toUpperCase());
     return sum + (price ? price.current_price * h.amount : 0);
   }, 0);
 
@@ -118,15 +119,66 @@ export default function CryptoPage() {
     }
   }
 
+  // Import holdings from CoinGecko portfolio CSV export
+  // Expected columns: Name, Symbol, Quantity (other columns ignored)
+  async function importFromCoinGeckoCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !portfolio) return;
+    e.target.value = "";
+    try {
+      const text = await file.text();
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length < 2) { toast.error("CSV je prázdne."); return; }
+      const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
+      const nameIdx = header.findIndex((h) => h === "name" || h === "coin");
+      const symbolIdx = header.findIndex((h) => h === "symbol");
+      const qtyIdx = header.findIndex((h) => h === "quantity" || h === "holdings" || h === "amount");
+      if (symbolIdx === -1 || qtyIdx === -1) {
+        toast.error("CSV neobsahuje stĺpce Symbol a Quantity. Exportuj portfólio z CoinGecko.");
+        return;
+      }
+      const newHoldings: CryptoHolding[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+        const symbol = (cols[symbolIdx] ?? "").toUpperCase();
+        const qty = parseFloat(cols[qtyIdx] ?? "0");
+        const name = nameIdx >= 0 ? (cols[nameIdx] ?? symbol) : symbol;
+        if (!symbol || isNaN(qty) || qty <= 0) continue;
+        newHoldings.push({
+          id: crypto.randomUUID(),
+          coinId: name.toLowerCase().replace(/\s+/g, "-"),
+          symbol,
+          name,
+          amount: qty,
+          exchange: "other",
+        });
+      }
+      if (newHoldings.length === 0) { toast.error("Žiadne platné riadky v CSV."); return; }
+      // Replace existing holdings with same symbol, keep others
+      const existingSymbols = new Set(newHoldings.map((h) => h.symbol));
+      const kept = holdings.filter((h) => !existingSymbols.has(h.symbol.toUpperCase()));
+      await savePortfolio({ ...portfolio, crypto: [...kept, ...newHoldings] });
+      await refreshPrices();
+      toast.success(`Importovaných ${newHoldings.length} koin z CoinGecko.`);
+    } catch {
+      toast.error("Chyba pri čítaní CSV súboru.");
+    }
+  }
+
   return (
     <AppShell>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Krypto</h1>
-            <p className="text-muted-foreground text-sm mt-1">Kryptomeny cez CoinGecko a Binance</p>
+            <p className="text-muted-foreground text-sm mt-1">Ceny cez CoinCap · Import z Binance a CoinGecko</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            <Button variant="outline" size="sm" onClick={() => csvRef.current?.click()}>
+              <Upload className="w-4 h-4 mr-2" />
+              Import CoinGecko
+            </Button>
+            <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={importFromCoinGeckoCSV} />
             <Button variant="outline" size="sm" onClick={importFromBinance} disabled={binanceLoading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${binanceLoading ? "animate-spin" : ""}`} />
               Import Binance
@@ -173,7 +225,7 @@ export default function CryptoPage() {
         ) : (
           <div className="space-y-3">
             {holdings.map((h) => {
-              const price = cryptoPrices.find((p) => p.id === h.coinId);
+              const price = cryptoPrices.find((p) => p.symbol === h.symbol.toUpperCase());
               const valueEur = price ? price.current_price * h.amount : 0;
               const change = price?.price_change_percentage_24h ?? 0;
               return (

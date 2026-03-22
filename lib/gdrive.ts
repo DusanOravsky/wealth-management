@@ -1,12 +1,53 @@
-// Google Drive sync via Google Identity Services (GIS) + Drive REST API
+// Google Drive sync via GIS (OAuth token) + GAPI client (API requests)
+// GAPI client routes calls through apis.google.com proxy frame — bypasses CORS preflight issues
+// that direct fetch() to googleapis.com encounters from github.io origin.
 // Uses appDataFolder scope — backup file is hidden from user's Drive, only this app can see it.
 
-// content.googleapis.com is the CORS-friendly endpoint used by Google's GAPI client library
-const DRIVE_API = "https://content.googleapis.com/drive/v3/files";
-const UPLOAD_API = "https://content.googleapis.com/upload/drive/v3/files";
 const BACKUP_FILENAME = "wealth-management-backup.json";
 export const GDRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 const LAST_SYNC_KEY = "wm_gdrive_last_sync";
+
+// ── GAPI client loading ───────────────────────────────────────────────────────
+
+let gapiReady = false;
+
+function loadGapiClient(): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (gapiReady || (window as any).gapi?.client) { gapiReady = true; return Promise.resolve(); }
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src*="apis.google.com/js/api"]');
+    if (existing) {
+      // Already injected — poll until gapi.client is ready
+      const t = setInterval(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((window as any).gapi?.client) { clearInterval(t); gapiReady = true; resolve(); }
+      }, 100);
+      setTimeout(() => { clearInterval(t); reject(new Error("GAPI timeout")); }, 10_000);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://apis.google.com/js/api.js";
+    script.async = true;
+    script.onload = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).gapi.load("client", () => { gapiReady = true; resolve(); });
+    };
+    script.onerror = () => reject(new Error("Nepodarilo sa načítať GAPI klient."));
+    document.head.appendChild(script);
+  });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function gapiReq<T>(token: string, method: string, path: string, params?: Record<string, string>, body?: unknown): Promise<T> {
+  await loadGapiClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const gapi = (window as any).gapi;
+  gapi.client.setToken({ access_token: token });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resp: any = await gapi.client.request({ path, method, params, body: body !== undefined ? JSON.stringify(body) : undefined });
+  if (resp.status >= 400) throw new Error(`Drive API ${resp.status}: ${JSON.stringify(resp.result)}`);
+  return resp.result as T;
+}
 
 /** Verifies token has drive.appdata scope; throws with helpful message if not. */
 async function assertDriveScope(token: string): Promise<void> {
@@ -72,93 +113,52 @@ export function requestAccessToken(clientId: string): Promise<string> {
   });
 }
 
-// ── Drive helpers ─────────────────────────────────────────────────────────────
+// ── Drive helpers (via GAPI client) ──────────────────────────────────────────
 
 interface DriveFile { id: string; modifiedTime: string; }
 
-async function driveGet<T>(url: string, token: string): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  } catch (e) {
-    throw new Error(`Sieťová chyba pri GET: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`Drive API ${res.status}: ${JSON.stringify(err)}`);
-  }
-  return res.json();
-}
-
 async function findBackupFile(token: string): Promise<DriveFile | null> {
-  const q = encodeURIComponent(`name = '${BACKUP_FILENAME}'`);
-  const url = `${DRIVE_API}?spaces=appDataFolder&fields=files(id,modifiedTime)&q=${q}`;
-  const data = await driveGet<{ files: DriveFile[] }>(url, token);
+  const data = await gapiReq<{ files: DriveFile[] }>(token, "GET", "/drive/v3/files", {
+    spaces: "appDataFolder",
+    fields: "files(id,modifiedTime)",
+    q: `name = '${BACKUP_FILENAME}'`,
+  });
   return data.files?.[0] ?? null;
 }
 
-// ── Upload (simple media upload — avoids multipart CORS issues) ───────────────
+// ── Upload ────────────────────────────────────────────────────────────────────
 
 export async function uploadToDrive(token: string, content: string): Promise<string> {
   await assertDriveScope(token);
   const existing = await findBackupFile(token);
-  const auth = { Authorization: `Bearer ${token}` };
 
   if (existing) {
-    let res: Response;
-    try {
-      res = await fetch(`${UPLOAD_API}/${existing.id}?uploadType=media&fields=modifiedTime`, {
-        method: "PATCH",
-        headers: { ...auth, "Content-Type": "application/json" },
-        body: content,
-      });
-    } catch (e) {
-      throw new Error(`Sieťová chyba pri update: ${e instanceof Error ? e.message : String(e)}`);
-    }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(`Aktualizácia zlyhala ${res.status}: ${JSON.stringify(err)}`);
-    }
-    const data = await res.json();
+    const data = await gapiReq<{ modifiedTime?: string }>(
+      token, "PATCH",
+      `/upload/drive/v3/files/${existing.id}`,
+      { uploadType: "media", fields: "modifiedTime" },
+      content
+    );
     const ts = data.modifiedTime ?? new Date().toISOString();
     localStorage.setItem(LAST_SYNC_KEY, ts);
     return ts;
   }
 
   // Create new file — step 1: metadata
-  let metaRes: Response;
-  try {
-    metaRes = await fetch(`${DRIVE_API}?fields=id`, {
-      method: "POST",
-      headers: { ...auth, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: BACKUP_FILENAME, parents: ["appDataFolder"] }),
-    });
-  } catch (e) {
-    throw new Error(`Sieťová chyba pri vytváraní súboru: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  if (!metaRes.ok) {
-    const err = await metaRes.json().catch(() => ({}));
-    throw new Error(`Vytvorenie súboru zlyhalo ${metaRes.status}: ${JSON.stringify(err)}`);
-  }
-  const { id } = await metaRes.json();
+  const meta = await gapiReq<{ id: string }>(token, "POST", "/drive/v3/files", { fields: "id" }, {
+    name: BACKUP_FILENAME,
+    parents: ["appDataFolder"],
+  });
+  const { id } = meta;
 
   // Step 2: upload content
-  let uploadRes: Response;
-  try {
-    uploadRes = await fetch(`${UPLOAD_API}/${id}?uploadType=media&fields=modifiedTime`, {
-      method: "PATCH",
-      headers: { ...auth, "Content-Type": "application/json" },
-      body: content,
-    });
-  } catch (e) {
-    throw new Error(`Sieťová chyba pri nahrávaní obsahu: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  if (!uploadRes.ok) {
-    const err = await uploadRes.json().catch(() => ({}));
-    throw new Error(`Nahrávanie zlyhalo ${uploadRes.status}: ${JSON.stringify(err)}`);
-  }
-  const data = await uploadRes.json();
-  const ts = data.modifiedTime ?? new Date().toISOString();
+  const uploadData = await gapiReq<{ modifiedTime?: string }>(
+    token, "PATCH",
+    `/upload/drive/v3/files/${id}`,
+    { uploadType: "media", fields: "modifiedTime" },
+    content
+  );
+  const ts = uploadData.modifiedTime ?? new Date().toISOString();
   localStorage.setItem(LAST_SYNC_KEY, ts);
   return ts;
 }
@@ -169,17 +169,23 @@ export async function downloadFromDrive(token: string): Promise<{ content: strin
   const file = await findBackupFile(token);
   if (!file) return null;
 
-  const res = await fetch(`${DRIVE_API}/${file.id}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`Sťahovanie zlyhalo ${res.status}: ${JSON.stringify(err)}`);
+  // For media download, use fetch directly (GAPI client doesn't handle binary responses well)
+  // At this point the CORS preflight is already done via GAPI for list; media download
+  // is a simple GET with auth header — try GAPI first, fall back to direct fetch.
+  try {
+    const content = await gapiReq<string>(token, "GET", `/drive/v3/files/${file.id}`, { alt: "media" });
+    localStorage.setItem(LAST_SYNC_KEY, file.modifiedTime);
+    return { content: typeof content === "string" ? content : JSON.stringify(content), modifiedTime: file.modifiedTime };
+  } catch {
+    // fallback: direct fetch with Authorization header
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Sťahovanie zlyhalo ${res.status}`);
+    const content = await res.text();
+    localStorage.setItem(LAST_SYNC_KEY, file.modifiedTime);
+    return { content, modifiedTime: file.modifiedTime };
   }
-
-  const content = await res.text();
-  localStorage.setItem(LAST_SYNC_KEY, file.modifiedTime);
-  return { content, modifiedTime: file.modifiedTime };
 }
 
 // ── Last sync ─────────────────────────────────────────────────────────────────

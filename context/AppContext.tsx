@@ -5,7 +5,7 @@ import { usePIN } from "@/hooks/usePIN";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { usePrices } from "@/hooks/usePrices";
 import { loadApiKey, loadGoals, saveGoals, loadSnapshots, saveSnapshot, loadAlerts, saveAlerts } from "@/lib/store";
-import { DEFAULT_CRYPTO_IDS } from "@/lib/constants";
+import { DEFAULT_CRYPTO_SYMBOLS } from "@/lib/constants";
 import { calcPortfolioSummary, groupByCategory } from "@/lib/portfolio-calc";
 import type {
   AppSettings,
@@ -93,9 +93,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setGoals(newGoals);
   }, []);
 
-  // Gather unique coin IDs from holdings
-  const coinIds = useMemo(
-    () => [...new Set(portfolio?.crypto.map((h) => h.coinId) ?? [])],
+  // Gather unique symbols from holdings (CoinCap matches by symbol)
+  const cryptoSymbols = useMemo(
+    () => [...new Set(portfolio?.crypto.map((h) => h.symbol.toUpperCase()) ?? [])],
     [portfolio]
   );
 
@@ -107,7 +107,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loading: pricesLoading,
     error: pricesError,
     refresh: refreshPrices,
-  } = usePrices(coinIds.length > 0 ? coinIds : DEFAULT_CRYPTO_IDS);
+  } = usePrices(cryptoSymbols.length > 0 ? cryptoSymbols : DEFAULT_CRYPTO_SYMBOLS);
 
   // Compute portfolio summary
   const portfolioSummary = useMemo(() => {

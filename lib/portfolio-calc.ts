@@ -11,7 +11,7 @@ export function calcPortfolioSummary(
   prices: {
     gold: number;
     silver: number;
-    crypto: { id: string; current_price: number }[];
+    crypto: { id: string; symbol: string; current_price: number }[];
     rates: Record<string, number>;
   }
 ): PortfolioSummary {
@@ -64,7 +64,7 @@ export function calcPortfolioSummary(
 
   // Crypto
   for (const h of portfolio.crypto) {
-    const price = prices.crypto.find((p) => p.id === h.coinId);
+    const price = prices.crypto.find((p) => p.symbol === h.symbol.toUpperCase());
     const valueEur = price ? price.current_price * h.amount : 0;
     assets.push({
       label: `${h.name} (${h.symbol})`,

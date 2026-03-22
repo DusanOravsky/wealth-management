@@ -15,7 +15,7 @@ interface Prices {
 }
 
 export function usePrices(
-  coinIds: string[],
+  symbols: string[],          // uppercase symbols: ["BTC", "ETH", ...]
   coingeckoApiKey?: string | null
 ) {
   const [prices, setPrices] = useState<Prices>({
@@ -29,12 +29,14 @@ export function usePrices(
   });
 
   const fetchAll = useCallback(async () => {
-    if (coinIds.length === 0) return;
+    if (symbols.length === 0) return;
     setPrices((p) => ({ ...p, loading: true, error: null }));
     try {
-      const [rates, crypto, commodities] = await Promise.all([
-        fetchExchangeRates(),
-        fetchCryptoPrices(coinIds, coingeckoApiKey),
+      // Fetch rates first — needed for USD→EUR conversion in fetchCryptoPrices
+      const rates = await fetchExchangeRates();
+      const usdToEur = 1 / (rates.USD ?? 1.09);
+      const [crypto, commodities] = await Promise.all([
+        fetchCryptoPrices(symbols, usdToEur),
         fetchCommodityPrices(coingeckoApiKey),
       ]);
       setPrices({
@@ -54,7 +56,7 @@ export function usePrices(
         error: e instanceof Error ? e.message : "Failed to fetch prices",
       }));
     }
-  }, [coinIds, coingeckoApiKey]);
+  }, [symbols, coingeckoApiKey]);
 
   useEffect(() => {
     fetchAll();

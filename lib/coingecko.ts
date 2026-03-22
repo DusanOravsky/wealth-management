@@ -1,56 +1,33 @@
-import { COINGECKO_BASE } from "./constants";
+import { COINGECKO_BASE, COINCAP_BASE } from "./constants";
 import type { CryptoPrice } from "./types";
 
-interface GeckoSimplePrice {
-  [coinId: string]: {
-    eur: number;
-    usd: number;
-    eur_24h_change?: number;
-  };
-}
-
+// Fetch crypto prices from CoinCap (free, no API key, CORS enabled)
+// Matches holdings by symbol (uppercase) — no CoinGecko ID mapping needed.
 export async function fetchCryptoPrices(
-  coinIds: string[],
-  apiKey?: string | null
+  symbols: string[],   // uppercase symbols: ["BTC", "ETH", ...]
+  usdToEur: number,    // conversion factor: 1 / rates.USD
 ): Promise<CryptoPrice[]> {
-  if (coinIds.length === 0) return [];
+  if (symbols.length === 0) return [];
 
-  const headers: Record<string, string> = {};
-  if (apiKey) headers["x-cg-demo-api-key"] = apiKey;
-
-  const ids = coinIds.join(",");
-  const url = `${COINGECKO_BASE}/coins/markets?vs_currency=eur&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`;
-
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`CoinGecko error: ${res.status}`);
+  const res = await fetch(`${COINCAP_BASE}/assets?limit=250`);
+  if (!res.ok) throw new Error(`CoinCap error: ${res.status}`);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any[] = await res.json();
-  return data.map((coin) => ({
-    id: coin.id,
-    symbol: coin.symbol.toUpperCase(),
-    name: coin.name,
-    current_price: coin.current_price,
-    price_change_percentage_24h: coin.price_change_percentage_24h ?? 0,
-    market_cap: coin.market_cap,
-  }));
-}
+  const data: any = await res.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assets: any[] = data.data ?? [];
 
-export async function fetchSimplePrices(
-  coinIds: string[],
-  apiKey?: string | null
-): Promise<GeckoSimplePrice> {
-  if (coinIds.length === 0) return {};
-
-  const headers: Record<string, string> = {};
-  if (apiKey) headers["x-cg-demo-api-key"] = apiKey;
-
-  const ids = coinIds.join(",");
-  const url = `${COINGECKO_BASE}/simple/price?ids=${ids}&vs_currencies=eur,usd&include_24hr_change=true`;
-
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`CoinGecko error: ${res.status}`);
-  return res.json();
+  const symbolSet = new Set(symbols.map((s) => s.toUpperCase()));
+  return assets
+    .filter((a) => symbolSet.has((a.symbol ?? "").toUpperCase()))
+    .map((a) => ({
+      id: (a.symbol ?? "").toUpperCase(),  // use symbol as id for matching
+      symbol: (a.symbol ?? "").toUpperCase(),
+      name: a.name ?? "",
+      current_price: parseFloat(a.priceUsd ?? "0") * usdToEur,
+      price_change_percentage_24h: parseFloat(a.changePercent24Hr ?? "0"),
+      market_cap: parseFloat(a.marketCapUsd ?? "0") * usdToEur,
+    }));
 }
 
 // Fetch physical gold & silver spot prices.
