@@ -15,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User } from "lucide-react";
+import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User, Cloud, CloudDownload } from "lucide-react";
+import { loadGIS, requestAccessToken, uploadToDrive, downloadFromDrive, getLastSync } from "@/lib/gdrive";
 import { toast } from "sonner";
 import { CURRENCIES, AUTO_LOCK_DEFAULT_MINUTES, PIN_MIN_LENGTH } from "@/lib/constants";
 import type { Currency } from "@/lib/types";
@@ -37,6 +38,11 @@ export default function SettingsPage() {
   const [changingPin, setChangingPin] = useState(false);
 
   const importRef = useRef<HTMLInputElement>(null);
+
+  // Google Drive sync
+  const [gdriveLoading, setGdriveLoading] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(() => getLastSync());
+  const [googleClientId, setGoogleClientId] = useState(settings?.googleClientId ?? "");
 
   async function saveKey(
     field: "binanceKey" | "binanceSecret" | "coingeckoKey" | "claudeKey",
@@ -103,6 +109,55 @@ export default function SettingsPage() {
       toast.error("Chyba pri importe. Skontroluj formát súboru.");
     }
     e.target.value = "";
+  }
+
+  async function handleGDriveUpload() {
+    if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
+    const clientId = settings.googleClientId ?? googleClientId;
+    if (!clientId) { toast.error("Zadaj Google Client ID."); return; }
+    setGdriveLoading(true);
+    try {
+      await loadGIS();
+      const token = await requestAccessToken(clientId);
+      const content = await exportBackup(pin, settings.salt);
+      const ts = await uploadToDrive(token, content);
+      setLastSync(ts);
+      toast.success("Záloha nahraná na Google Drive.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Chyba pri nahrávaní.");
+    } finally {
+      setGdriveLoading(false);
+    }
+  }
+
+  async function handleGDriveDownload() {
+    if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
+    const clientId = settings.googleClientId ?? googleClientId;
+    if (!clientId) { toast.error("Zadaj Google Client ID."); return; }
+    if (!confirm("Stiahnuť zálohu z Google Drive? Prepíše aktuálne dáta.")) return;
+    setGdriveLoading(true);
+    try {
+      await loadGIS();
+      const token = await requestAccessToken(clientId);
+      const result = await downloadFromDrive(token);
+      if (!result) { toast.error("Na Drive sa nenašla žiadna záloha."); return; }
+      await importBackup(result.content, pin, settings.salt);
+      await reloadPortfolio();
+      setLastSync(result.modifiedTime);
+      toast.success("Záloha stiahnutá a importovaná.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Chyba pri sťahovaní.");
+    } finally {
+      setGdriveLoading(false);
+    }
+  }
+
+  function saveGoogleClientId() {
+    if (!settings) return;
+    const id = googleClientId.trim();
+    if (!id) { toast.error("Zadaj Client ID."); return; }
+    updateSettings({ ...settings, googleClientId: id });
+    toast.success("Google Client ID uložené.");
   }
 
   function handleWipe() {
@@ -328,6 +383,79 @@ export default function SettingsPage() {
               className="hidden"
               onChange={handleImport}
             />
+          </CardContent>
+        </Card>
+
+        {/* Google Drive Sync */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Cloud className="w-4 h-4" /> Google Drive synchronizácia
+            </CardTitle>
+            <CardDescription>
+              Záloha sa uloží do skrytého priečinka tvojho Drive (appDataFolder) — vidí ju len táto appka.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Client ID input */}
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground">Google OAuth Client ID</label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="xxxx.apps.googleusercontent.com"
+                  value={googleClientId}
+                  onChange={(e) => setGoogleClientId(e.target.value)}
+                  className="font-mono text-xs"
+                />
+                <Button size="sm" onClick={saveGoogleClientId}><Save className="w-4 h-4" /></Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {settings?.googleClientId ? "✓ Client ID uložené" : "Ako získať Client ID — pozri pokyny nižšie"}
+              </p>
+            </div>
+
+            {/* Sync buttons */}
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGDriveUpload}
+                disabled={gdriveLoading || !settings?.googleClientId}
+              >
+                <Cloud className={`w-4 h-4 mr-2 ${gdriveLoading ? "animate-pulse" : ""}`} />
+                Nahrať na Drive
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGDriveDownload}
+                disabled={gdriveLoading || !settings?.googleClientId}
+              >
+                <CloudDownload className="w-4 h-4 mr-2" />
+                Stiahnuť z Drive
+              </Button>
+            </div>
+
+            {lastSync && (
+              <p className="text-xs text-muted-foreground">
+                Posledná synchronizácia: {new Date(lastSync).toLocaleString("sk-SK")}
+              </p>
+            )}
+
+            {/* Setup instructions */}
+            {!settings?.googleClientId && (
+              <div className="rounded-md bg-muted/50 p-3 space-y-1 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Ako nastaviť Google Client ID:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Otvor <strong>console.cloud.google.com</strong></li>
+                  <li>Vytvor projekt → APIs &amp; Services → Enable APIs → <strong>Google Drive API</strong></li>
+                  <li>Credentials → Create Credentials → <strong>OAuth 2.0 Client ID</strong></li>
+                  <li>Application type: <strong>Web application</strong></li>
+                  <li>Authorized JavaScript origins pridaj: <strong>https://dusanoravsky.github.io</strong></li>
+                  <li>Skopíruj Client ID a vlož ho sem</li>
+                </ol>
+              </div>
+            )}
           </CardContent>
         </Card>
 

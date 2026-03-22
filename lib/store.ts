@@ -1,4 +1,7 @@
-import type { AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal, PriceAlert, Insurance, BudgetCategory, Expense } from "./types";
+import type {
+  AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal,
+  PriceAlert, Insurance, BudgetCategory, Expense,
+} from "./types";
 import { STORE_KEYS, MAX_SNAPSHOTS } from "./constants";
 import { encrypt, decrypt } from "./crypto";
 
@@ -160,11 +163,17 @@ export function clearSession(): void { _sessionPin = null; }
 // ---------- Export / Import ----------
 
 export async function exportBackup(pin: string, salt: string): Promise<string> {
-  // Export decrypted portfolio + settings (minus PIN hash) as JSON
   const portfolio = await loadPortfolio(pin, salt);
-  const goals = loadGoals();
-  const snapshots = loadSnapshots();
-  return JSON.stringify({ portfolio, goals, snapshots, exportedAt: new Date().toISOString() }, null, 2);
+  return JSON.stringify({
+    portfolio,
+    goals: loadGoals(),
+    snapshots: loadSnapshots(),
+    alerts: loadAlerts(),
+    insurance: loadInsurance(),
+    budgetCategories: loadBudgetCategories(),
+    expenses: loadExpenses(),
+    exportedAt: new Date().toISOString(),
+  }, null, 2);
 }
 
 export async function importBackup(json: string, pin: string, salt: string): Promise<void> {
@@ -172,6 +181,10 @@ export async function importBackup(json: string, pin: string, salt: string): Pro
   if (data.portfolio) await savePortfolio(data.portfolio as PortfolioData, pin, salt);
   if (data.goals) saveGoals(data.goals as FinancialGoal[]);
   if (data.snapshots) rawSet(STORE_KEYS.SNAPSHOTS, JSON.stringify(data.snapshots));
+  if (data.alerts) saveAlerts(data.alerts as PriceAlert[]);
+  if (data.insurance) saveInsurance(data.insurance as Insurance[]);
+  if (data.budgetCategories) saveBudgetCategories(data.budgetCategories as BudgetCategory[]);
+  if (data.expenses) saveExpenses(data.expenses as Expense[]);
 }
 
 // ---------- Full wipe ----------

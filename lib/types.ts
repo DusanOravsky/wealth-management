@@ -94,6 +94,7 @@ export interface AppSettings {
   binanceSecret?: string;
   coingeckoKey?: string;
   claudeKey?: string;
+  googleClientId?: string;
   baseCurrency: Currency;
   displayCurrency?: Currency;
   autoLockMinutes?: number;
