@@ -22,7 +22,6 @@ import { CURRENCIES, AUTO_LOCK_DEFAULT_MINUTES, PIN_MIN_LENGTH } from "@/lib/con
 import type { Currency } from "@/lib/types";
 import { exportQRPayload, importQRPayload } from "@/lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import QRCode from "qrcode";
 
 export default function SettingsPage() {
   const { pin, settings, updateSettings, lock, changePIN, reloadPortfolio } = useApp();
@@ -170,6 +169,7 @@ export default function SettingsPage() {
     try {
       const encoded = await exportQRPayload(pin, settings.salt);
       const url = `https://dusanoravsky.github.io/wealth-management/#qr=${encoded}`;
+      const QRCode = (await import("qrcode")).default;
       const dataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: "L", width: 320, margin: 2 });
       setQrDataUrl(dataUrl);
     } catch {
