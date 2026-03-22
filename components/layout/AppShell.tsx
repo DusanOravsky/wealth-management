@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useApp } from "@/context/AppContext";
 import { Sidebar } from "./Sidebar";
 import { PINScreen } from "@/components/auth/PINScreen";
-import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
+import { TrendingUp, Menu } from "lucide-react";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -14,8 +13,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (pinState === "loading") {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-muted-foreground text-sm">Načítavam...</div>
+      <div className="flex items-center justify-center min-h-screen bg-sidebar">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center animate-pulse"
+            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+          >
+            <TrendingUp className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-sidebar-foreground/60 text-sm">Načítavam...</span>
+        </div>
       </div>
     );
   }
@@ -29,7 +36,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 md:hidden"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -47,18 +55,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar */}
-        <div className="md:hidden flex items-center h-14 px-4 border-b border-border bg-card sticky top-0 z-30">
-          <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(true)}>
+        {/* Mobile top bar — matches sidebar style */}
+        <div
+          className="md:hidden flex items-center h-14 px-4 border-b sticky top-0 z-30"
+          style={{ background: "var(--sidebar)", borderColor: "var(--sidebar-border)" }}
+        >
+          <button
+            className="p-1.5 rounded-md transition-colors"
+            style={{ color: "rgba(255,255,255,0.6)" }}
+            onClick={() => setSidebarOpen(true)}
+          >
             <Menu className="w-5 h-5" />
-          </Button>
-          <span className="ml-3 font-semibold text-primary text-sm">Wealth Manager</span>
+          </button>
+          <div className="flex items-center gap-2 ml-3">
+            <div
+              className="w-6 h-6 rounded-md flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+            >
+              <TrendingUp className="w-3 h-3 text-white" />
+            </div>
+            <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>
+              Wealth Manager
+            </span>
+          </div>
         </div>
 
         <main className="flex-1 overflow-auto">
           {children}
         </main>
       </div>
+
       <PWAInstallBanner />
     </div>
   );
