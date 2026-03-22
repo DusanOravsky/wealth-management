@@ -30,7 +30,13 @@ function loadGapiClient(): Promise<void> {
     script.async = true;
     script.onload = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).gapi.load("client", () => { gapiReady = true; resolve(); });
+      (window as any).gapi.load("client", async () => {
+        // init with empty config — required before setToken works correctly
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (window as any).gapi.client.init({});
+        gapiReady = true;
+        resolve();
+      });
     };
     script.onerror = () => reject(new Error("Nepodarilo sa načítať GAPI klient."));
     document.head.appendChild(script);

@@ -1,32 +1,34 @@
-import { COINGECKO_BASE, COINCAP_BASE } from "./constants";
+import { COINGECKO_BASE } from "./constants";
 import type { CryptoPrice } from "./types";
 
-// Fetch crypto prices from CoinCap (free, no API key, CORS enabled)
-// Matches holdings by symbol (uppercase) — no CoinGecko ID mapping needed.
+// Fetch crypto prices from CryptoCompare (free, no API key, CORS enabled)
+// https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC,ETH&tsyms=EUR
 export async function fetchCryptoPrices(
   symbols: string[],   // uppercase symbols: ["BTC", "ETH", ...]
-  usdToEur: number,    // conversion factor: 1 / rates.USD
+  usdToEur: number,    // unused — CryptoCompare returns EUR directly
 ): Promise<CryptoPrice[]> {
   if (symbols.length === 0) return [];
+  void usdToEur; // CryptoCompare returns EUR natively
 
-  const res = await fetch(`${COINCAP_BASE}/assets?limit=250`);
-  if (!res.ok) throw new Error(`CoinCap error: ${res.status}`);
+  const fsyms = symbols.join(",");
+  const url = `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${fsyms}&tsyms=EUR`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`CryptoCompare error: ${res.status}`);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const assets: any[] = data.data ?? [];
+  const raw = data.RAW ?? {};
+  const display = data.DISPLAY ?? {};
 
-  const symbolSet = new Set(symbols.map((s) => s.toUpperCase()));
-  return assets
-    .filter((a) => symbolSet.has((a.symbol ?? "").toUpperCase()))
-    .map((a) => ({
-      id: (a.symbol ?? "").toUpperCase(),  // use symbol as id for matching
-      symbol: (a.symbol ?? "").toUpperCase(),
-      name: a.name ?? "",
-      current_price: parseFloat(a.priceUsd ?? "0") * usdToEur,
-      price_change_percentage_24h: parseFloat(a.changePercent24Hr ?? "0"),
-      market_cap: parseFloat(a.marketCapUsd ?? "0") * usdToEur,
+  return symbols
+    .filter((s) => raw[s]?.EUR)
+    .map((s) => ({
+      id: s,
+      symbol: s,
+      name: display[s]?.EUR?.FROMSYMBOL ?? s,
+      current_price: raw[s].EUR.PRICE ?? 0,
+      price_change_percentage_24h: raw[s].EUR.CHANGEPCT24HOUR ?? 0,
+      market_cap: raw[s].EUR.MKTCAP ?? 0,
     }));
 }
 
