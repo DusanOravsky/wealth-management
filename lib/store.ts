@@ -1,6 +1,6 @@
 import type {
   AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal,
-  PriceAlert, Insurance, BudgetCategory, Expense,
+  PriceAlert, Insurance, BudgetCategory, Expense, RecurringExpense,
 } from "./types";
 import { STORE_KEYS, MAX_SNAPSHOTS } from "./constants";
 import { encrypt, decrypt } from "./crypto";
@@ -152,6 +152,18 @@ export function saveExpenses(expenses: Expense[]): void {
   rawSet(STORE_KEYS.EXPENSES, JSON.stringify(expenses));
 }
 
+// ---------- Recurring expenses (plain JSON) ----------
+
+export function loadRecurringExpenses(): RecurringExpense[] {
+  const raw = rawGet(STORE_KEYS.RECURRING_EXPENSES);
+  if (!raw) return [];
+  try { return JSON.parse(raw) as RecurringExpense[]; } catch { return []; }
+}
+
+export function saveRecurringExpenses(items: RecurringExpense[]): void {
+  rawSet(STORE_KEYS.RECURRING_EXPENSES, JSON.stringify(items));
+}
+
 // ---------- Session (in-memory only) ----------
 
 let _sessionPin: string | null = null;
@@ -186,6 +198,7 @@ export async function exportBackup(pin: string, salt: string): Promise<string> {
     insurance: loadInsurance(),
     budgetCategories: loadBudgetCategories(),
     expenses: loadExpenses(),
+    recurringExpenses: loadRecurringExpenses(),
   }, null, 2);
 }
 
@@ -198,6 +211,7 @@ export async function importBackup(json: string, pin: string, salt: string): Pro
   if (data.insurance) saveInsurance(data.insurance as Insurance[]);
   if (data.budgetCategories) saveBudgetCategories(data.budgetCategories as BudgetCategory[]);
   if (data.expenses) saveExpenses(data.expenses as Expense[]);
+  if (data.recurringExpenses) saveRecurringExpenses(data.recurringExpenses as RecurringExpense[]);
   // Merge non-sensitive settings (preserve PIN/salt/API keys from current device)
   if (data.settings) {
     const current = loadSettings();
@@ -216,6 +230,60 @@ export async function importBackup(json: string, pin: string, salt: string): Pro
   }
 }
 
+// ---------- QR Transfer (compact payload, portfolio only) ----------
+
+async function compressB64(data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const stream = new CompressionStream("deflate-raw");
+  const writer = stream.writable.getWriter();
+  await writer.write(encoder.encode(data));
+  await writer.close();
+  const buf = await new Response(stream.readable).arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+export async function decompressB64(b64: string): Promise<string> {
+  const standard = b64.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(standard);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  const stream = new DecompressionStream("deflate-raw");
+  const writer = stream.writable.getWriter();
+  await writer.write(bytes);
+  await writer.close();
+  const buf = await new Response(stream.readable).arrayBuffer();
+  return new TextDecoder().decode(buf);
+}
+
+export async function exportQRPayload(pin: string, salt: string): Promise<string> {
+  const portfolio = await loadPortfolio(pin, salt);
+  const settings = loadSettings();
+  const payload = {
+    v: 2,
+    portfolio,
+    s: settings ? {
+      displayCurrency: settings.displayCurrency,
+      birthYear: settings.birthYear,
+      retirementAge: settings.retirementAge,
+      monthlyIncome: settings.monthlyIncome,
+    } : undefined,
+  };
+  return compressB64(JSON.stringify(payload));
+}
+
+export async function importQRPayload(encoded: string, pin: string, salt: string): Promise<void> {
+  const json = await decompressB64(encoded);
+  const data = JSON.parse(json);
+  if (data.portfolio) await savePortfolio(data.portfolio as PortfolioData, pin, salt);
+  if (data.s) {
+    const current = loadSettings();
+    if (current) saveSettings({ ...current, ...data.s });
+  }
+}
+
 // ---------- Full wipe ----------
 
 export function wipeAll(): void {
@@ -227,5 +295,6 @@ export function wipeAll(): void {
   rawRemove(STORE_KEYS.INSURANCE);
   rawRemove(STORE_KEYS.BUDGET_CATEGORIES);
   rawRemove(STORE_KEYS.EXPENSES);
+  rawRemove(STORE_KEYS.RECURRING_EXPENSES);
   clearSession();
 }

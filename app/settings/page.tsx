@@ -15,11 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User, Cloud, CloudDownload } from "lucide-react";
+import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User, Cloud, CloudDownload, QrCode, ScanLine } from "lucide-react";
 import { loadGIS, requestAccessToken, uploadToDrive, downloadFromDrive, getLastSync } from "@/lib/gdrive";
 import { toast } from "sonner";
 import { CURRENCIES, AUTO_LOCK_DEFAULT_MINUTES, PIN_MIN_LENGTH } from "@/lib/constants";
 import type { Currency } from "@/lib/types";
+import { exportQRPayload, importQRPayload } from "@/lib/store";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import QRCode from "qrcode";
 
 export default function SettingsPage() {
   const { pin, settings, updateSettings, lock, changePIN, reloadPortfolio } = useApp();
@@ -43,6 +46,13 @@ export default function SettingsPage() {
   const [gdriveLoading, setGdriveLoading] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(() => getLastSync());
   const [googleClientId, setGoogleClientId] = useState(settings?.googleClientId ?? "");
+
+  // QR transfer
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrScanInput, setQrScanInput] = useState("");
+  const [qrImportLoading, setQrImportLoading] = useState(false);
 
   async function saveKey(
     field: "binanceKey" | "binanceSecret" | "coingeckoKey" | "claudeKey",
@@ -149,6 +159,43 @@ export default function SettingsPage() {
       toast.error(e instanceof Error ? e.message : "Chyba pri sťahovaní.");
     } finally {
       setGdriveLoading(false);
+    }
+  }
+
+  async function openQRDialog() {
+    if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
+    setQrDialogOpen(true);
+    setQrDataUrl(null);
+    setQrLoading(true);
+    try {
+      const encoded = await exportQRPayload(pin, settings.salt);
+      const url = `https://dusanoravsky.github.io/wealth-management/#qr=${encoded}`;
+      const dataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: "L", width: 320, margin: 2 });
+      setQrDataUrl(dataUrl);
+    } catch {
+      toast.error("Chyba pri generovaní QR kódu.");
+    } finally {
+      setQrLoading(false);
+    }
+  }
+
+  async function handleQRImport() {
+    if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
+    const encoded = qrScanInput.trim();
+    if (!encoded) { toast.error("Zadaj zakódované dáta."); return; }
+    setQrImportLoading(true);
+    try {
+      // Accept either the full URL or just the encoded payload
+      const payload = encoded.includes("#qr=") ? encoded.split("#qr=")[1] : encoded;
+      await importQRPayload(payload, pin, settings.salt);
+      await reloadPortfolio();
+      toast.success("Dáta importované z QR kódu.");
+      setQrDialogOpen(false);
+      setQrScanInput("");
+    } catch {
+      toast.error("Neplatné QR dáta. Skopíruj obsah presne z PC.");
+    } finally {
+      setQrImportLoading(false);
     }
   }
 
@@ -392,6 +439,41 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* QR Transfer */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <QrCode className="w-4 h-4" /> QR prenos (PC ↔ Mobil)
+            </CardTitle>
+            <CardDescription>
+              Prenesie portfólio medzi zariadeniami bez cloudu — naskenuj QR kód z PC na mobile, alebo vlož kód z mobilu na PC.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={openQRDialog} disabled={qrLoading}>
+                <QrCode className="w-4 h-4 mr-2" />
+                Zobraziť QR kód
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Na PC vygeneruj QR → naskenuj mobilom. Na mobile vlož kód (URL z QR) do poľa nižšie.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Vlož QR URL alebo zakódovaný text..."
+                value={qrScanInput}
+                onChange={(e) => setQrScanInput(e.target.value)}
+                className="text-xs font-mono"
+              />
+              <Button size="sm" onClick={handleQRImport} disabled={qrImportLoading || !qrScanInput}>
+                <ScanLine className="w-4 h-4 mr-2" />
+                Import
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Google Drive Sync */}
         <Card>
           <CardHeader>
@@ -579,6 +661,26 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>QR kód prenosu</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-2">
+            {qrLoading && <p className="text-sm text-muted-foreground">Generujem QR kód...</p>}
+            {qrDataUrl && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrDataUrl} alt="QR kód" className="rounded-lg border w-64 h-64" />
+                <p className="text-xs text-muted-foreground text-center">
+                  Naskenuj tento kód mobilom (photo app alebo QR scanner). Otvorí sa aplikácia s možnosťou importu.
+                </p>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

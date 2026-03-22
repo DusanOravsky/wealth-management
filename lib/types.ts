@@ -177,6 +177,22 @@ export interface Expense {
   note?: string;
 }
 
+// Recurring expense or income (monthly rent, annual insurance, salary, etc.)
+export interface RecurringExpense {
+  id: string;
+  type: "expense" | "income";  // income = salary, etc.
+  categoryId: string;
+  amount: number;
+  currency: Currency;
+  description: string;
+  frequency: "monthly" | "annual";
+  dayOfMonth: number;   // 1-28, day of month it's due
+  month?: number;       // 0-11, for annual: which month it's due
+  startDate: string;    // YYYY-MM-DD
+  active: boolean;
+  note?: string;
+}
+
 // Insurance policy
 export interface Insurance {
   id: string;

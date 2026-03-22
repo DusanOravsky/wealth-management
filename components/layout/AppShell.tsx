@@ -1,15 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { Sidebar } from "./Sidebar";
 import { PINScreen } from "@/components/auth/PINScreen";
-import { TrendingUp, Menu } from "lucide-react";
+import { TrendingUp, Menu, WifiOff } from "lucide-react";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pinState } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof window !== "undefined" ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const up = () => setIsOnline(true);
+    const down = () => setIsOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+  }, []);
 
   if (pinState === "loading") {
     return (
@@ -67,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2 ml-3">
+          <div className="flex items-center gap-2 ml-3 flex-1">
             <div
               className="w-6 h-6 rounded-md flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
@@ -78,6 +89,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               Wealth Manager
             </span>
           </div>
+          {!isOnline && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+              style={{ background: "rgba(239,68,68,0.2)", color: "#fca5a5" }}>
+              <WifiOff className="w-3 h-3" />
+              Offline
+            </div>
+          )}
         </div>
 
         <main className="flex-1 overflow-auto">

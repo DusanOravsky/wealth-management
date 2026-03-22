@@ -12,31 +12,31 @@ function buildPrompt(summary: PortfolioSummary): string {
     return `${a.label}: ${pct}%`;
   });
 
-  return `You are a personal wealth advisor. Analyze the following portfolio and provide actionable recommendations.
+  return `Si osobný finančný poradca. Analyzuj nasledujúce portfólio a poskytni konkrétne odporúčania v slovenčine.
 
-Portfolio total: €${summary.totalEur.toFixed(2)}
-Last updated: ${summary.lastUpdated}
+Celková hodnota portfólia: €${summary.totalEur.toFixed(2)}
+Posledná aktualizácia: ${summary.lastUpdated}
 
-Asset breakdown:
+Rozloženie aktív:
 ${lines.join("\n")}
 
-Allocation:
+Alokácia:
 ${allocations.join("\n")}
 
-Provide 4-6 specific recommendations in JSON format. Each recommendation must have:
+Poskytni 4–6 konkrétnych odporúčaní vo formáte JSON. Každé odporúčanie musí obsahovať:
 - category: "allocation" | "risk" | "opportunity" | "warning"
-- title: short title (max 10 words)
-- description: actionable advice (2-3 sentences)
+- title: krátky nadpis (max 10 slov, po slovensky)
+- description: konkrétna rada (2–3 vety, po slovensky)
 - priority: "high" | "medium" | "low"
 
-Consider:
-1. Diversification across asset classes
-2. Risk exposure (crypto volatility, commodity concentration)
-3. Liquidity (cash vs illiquid assets)
-4. Slovak context (II. pilier is illiquid until retirement)
-5. Inflation protection
+Zohľadni:
+1. Diverzifikáciu naprieč triedami aktív
+2. Riziko (volatilita krypta, koncentrácia komodít)
+3. Likviditu (hotovosť vs. nelikvidné aktíva)
+4. Slovenský kontext (II. pilier je viazaný do dôchodku)
+5. Ochranu pred infláciou
 
-Respond with ONLY valid JSON array, no markdown, no explanation.`;
+Odpovedaj VÝHRADNE validným JSON poľom, žiadny markdown, žiadne vysvetlenia.`;
 }
 
 export interface InsuranceAlternative {

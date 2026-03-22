@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { loadBudgetCategories, saveBudgetCategories, loadExpenses, saveExpenses } from "@/lib/store";
+import {
+  loadBudgetCategories, saveBudgetCategories,
+  loadExpenses, saveExpenses,
+  loadRecurringExpenses, saveRecurringExpenses,
+} from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,10 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import type { BudgetCategory, Expense } from "@/lib/types";
+import type { BudgetCategory, Expense, RecurringExpense } from "@/lib/types";
 
 // ─── Default categories ───────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES: BudgetCategory[] = [
@@ -39,12 +43,66 @@ function monthKey(year: number, month: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
 }
 
+/** Returns virtual expense entries for recurring expenses (not income) due in [year, month] */
+function getRecurringForMonth(recurring: RecurringExpense[], year: number, month: number): Expense[] {
+  const mk = monthKey(year, month);
+  return recurring
+    .filter((r) => {
+      if (!r.active || r.type === "income") return false;
+      const rStart = new Date(r.startDate);
+      if (rStart > new Date(year, month + 1, 0)) return false;
+      if (r.frequency === "monthly") return true;
+      if (r.frequency === "annual") return (r.month ?? new Date(r.startDate).getMonth()) === month;
+      return false;
+    })
+    .map((r) => ({
+      id: `recurring_${r.id}_${mk}`,
+      categoryId: r.categoryId,
+      amount: r.amount,
+      currency: r.currency,
+      date: `${year}-${String(month + 1).padStart(2, "0")}-${String(r.dayOfMonth).padStart(2, "0")}`,
+      description: r.description,
+      _recurring: true,
+    } as Expense & { _recurring?: boolean }));
+}
+
+/** Returns total income from recurring income entries due in [year, month] */
+function getRecurringIncomeForMonth(recurring: RecurringExpense[], year: number, month: number): number {
+  return recurring
+    .filter((r) => {
+      if (!r.active || r.type !== "income") return false;
+      const rStart = new Date(r.startDate);
+      if (rStart > new Date(year, month + 1, 0)) return false;
+      if (r.frequency === "monthly") return true;
+      if (r.frequency === "annual") return (r.month ?? new Date(r.startDate).getMonth()) === month;
+      return false;
+    })
+    .reduce((s, r) => s + r.amount, 0);
+}
+
+const EMPTY_RECUR: Omit<RecurringExpense, "id"> = {
+  type: "expense",
+  categoryId: "",
+  amount: 0,
+  currency: "EUR",
+  description: "",
+  frequency: "monthly",
+  dayOfMonth: 1,
+  month: 0,
+  startDate: new Date().toISOString().slice(0, 10),
+  active: true,
+};
+
 export default function BudgetPage() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [categories, setCategories] = useState<BudgetCategory[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [categories, setCategories] = useState<BudgetCategory[]>(() => {
+    const saved = loadBudgetCategories();
+    return saved.length > 0 ? saved : DEFAULT_CATEGORIES;
+  });
+  const [expenses, setExpenses] = useState<Expense[]>(() => loadExpenses());
+  const [recurring, setRecurring] = useState<RecurringExpense[]>(() => loadRecurringExpenses());
 
   // Expense dialog
   const [expOpen, setExpOpen] = useState(false);
@@ -56,31 +114,44 @@ export default function BudgetPage() {
   const [editingCat, setEditingCat] = useState<BudgetCategory | null>(null);
   const [catForm, setCatForm] = useState({ name: "", color: "#6366f1", monthlyLimit: 0, icon: "📦" });
 
-  useEffect(() => {
-    const saved = loadBudgetCategories();
-    setCategories(saved.length > 0 ? saved : DEFAULT_CATEGORIES);
-    setExpenses(loadExpenses());
-  }, []);
+  // Recurring dialog
+  const [recurOpen, setRecurOpen] = useState(false);
+  const [editingRecur, setEditingRecur] = useState<RecurringExpense | null>(null);
+  const [recurForm, setRecurForm] = useState<Omit<RecurringExpense, "id">>(EMPTY_RECUR);
 
-  // Expenses for selected month
+  // Expenses for selected month (manual + recurring virtual entries)
   const mk = monthKey(year, month);
-  const monthExpenses = useMemo(
+  const manualMonthExpenses = useMemo(
     () => expenses.filter((e) => e.date.startsWith(mk)),
     [expenses, mk]
   );
+  const recurringVirtual = useMemo(
+    () => getRecurringForMonth(recurring, year, month),
+    [recurring, year, month]
+  );
+  const allMonthExpenses = useMemo(
+    () => [...manualMonthExpenses, ...recurringVirtual],
+    [manualMonthExpenses, recurringVirtual]
+  );
 
-  // Totals per category this month
+  // Totals per category (includes recurring)
   const catTotals = useMemo(() => {
     return categories.reduce<Record<string, number>>((acc, cat) => {
-      acc[cat.id] = monthExpenses
+      acc[cat.id] = allMonthExpenses
         .filter((e) => e.categoryId === cat.id)
         .reduce((s, e) => s + e.amount, 0);
       return acc;
     }, {});
-  }, [categories, monthExpenses]);
+  }, [categories, allMonthExpenses]);
 
+  const recurringIncome = useMemo(
+    () => getRecurringIncomeForMonth(recurring, year, month),
+    [recurring, year, month]
+  );
   const totalSpent = Object.values(catTotals).reduce((s, v) => s + v, 0);
   const totalBudget = categories.reduce((s, c) => s + c.monthlyLimit, 0);
+  const recurringMonthTotal = recurringVirtual.reduce((s, e) => s + e.amount, 0);
+  const cashFlow = recurringIncome - totalSpent;
 
   const chartData = categories
     .filter((c) => catTotals[c.id] > 0 || c.monthlyLimit > 0)
@@ -162,7 +233,44 @@ export default function BudgetPage() {
     toast.success("Kategória odstránená.");
   }
 
+  // ── Recurring CRUD ──
+  function openAddRecur() {
+    setEditingRecur(null);
+    setRecurForm({ ...EMPTY_RECUR, categoryId: categories[0]?.id ?? "", startDate: today.toISOString().slice(0, 10) });
+    setRecurOpen(true);
+  }
+  function openEditRecur(r: RecurringExpense) {
+    setEditingRecur(r);
+    setRecurForm({ type: r.type ?? "expense", categoryId: r.categoryId, amount: r.amount, currency: r.currency, description: r.description, frequency: r.frequency, dayOfMonth: r.dayOfMonth, month: r.month ?? new Date(r.startDate).getMonth(), startDate: r.startDate, active: r.active, note: r.note });
+    setRecurOpen(true);
+  }
+  function saveRecur() {
+    if (!recurForm.categoryId || recurForm.amount <= 0 || !recurForm.description) {
+      toast.error("Vyplň kategóriu, sumu a popis."); return;
+    }
+    const entry: RecurringExpense = { id: editingRecur?.id ?? crypto.randomUUID(), ...recurForm };
+    const updated = editingRecur
+      ? recurring.map((r) => r.id === editingRecur.id ? entry : r)
+      : [...recurring, entry];
+    saveRecurringExpenses(updated);
+    setRecurring(updated);
+    setRecurOpen(false);
+    toast.success(editingRecur ? "Pravidelný výdavok upravený." : "Pravidelný výdavok pridaný.");
+  }
+  function deleteRecur(id: string) {
+    const updated = recurring.filter((r) => r.id !== id);
+    saveRecurringExpenses(updated);
+    setRecurring(updated);
+    toast.success("Odstránený.");
+  }
+  function toggleRecur(id: string) {
+    const updated = recurring.map((r) => r.id === id ? { ...r, active: !r.active } : r);
+    saveRecurringExpenses(updated);
+    setRecurring(updated);
+  }
+
   const selectedCatLabel = categories.find((c) => c.id === expForm.categoryId);
+  const selectedRecurCat = categories.find((c) => c.id === recurForm.categoryId);
 
   return (
     <AppShell>
@@ -184,28 +292,39 @@ export default function BudgetPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {recurringIncome > 0 && (
+            <Card className="border-green-300 dark:border-green-700">
+              <CardContent className="pt-4">
+                <p className="text-xs text-muted-foreground">Príjem</p>
+                <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{fmt(recurringIncome)}</p>
+                <p className="text-xs text-muted-foreground mt-1">pravidelný</p>
+              </CardContent>
+            </Card>
+          )}
           <Card className={totalSpent > totalBudget ? "border-red-300 dark:border-red-700" : ""}>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Minuté tento mesiac</p>
+              <p className="text-xs text-muted-foreground">Výdavky</p>
               <p className={`text-2xl font-bold mt-1 ${totalSpent > totalBudget ? "text-red-600 dark:text-red-400" : ""}`}>{fmt(totalSpent)}</p>
-              <p className="text-xs text-muted-foreground mt-1">{totalBudget > 0 ? `${((totalSpent / totalBudget) * 100).toFixed(1)}% z rozpočtu` : "—"}</p>
+              {recurringMonthTotal > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">pravidelné: {fmt(recurringMonthTotal)}</p>
+              )}
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Celkový rozpočet</p>
+              <p className="text-xs text-muted-foreground">Rozpočet</p>
               <p className="text-2xl font-bold mt-1">{fmt(totalBudget)}</p>
-              <p className="text-xs text-muted-foreground mt-1">{fmt(totalBudget / 12 * 12)} / rok</p>
+              <p className="text-xs text-muted-foreground mt-1">{totalBudget > 0 ? `${((totalSpent / totalBudget) * 100).toFixed(0)}%` : "—"}</p>
             </CardContent>
           </Card>
-          <Card className={(totalBudget - totalSpent) < 0 ? "border-red-300 dark:border-red-700" : "border-green-300 dark:border-green-700"}>
+          <Card className={cashFlow < 0 ? "border-red-300 dark:border-red-700" : recurringIncome > 0 ? "border-green-300 dark:border-green-700" : ""}>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Zostatok</p>
-              <p className={`text-2xl font-bold mt-1 ${(totalBudget - totalSpent) < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                {fmt(totalBudget - totalSpent)}
+              <p className="text-xs text-muted-foreground">{recurringIncome > 0 ? "Cash flow" : "Zostatok"}</p>
+              <p className={`text-2xl font-bold mt-1 ${cashFlow < 0 ? "text-red-600 dark:text-red-400" : recurringIncome > 0 ? "text-green-600 dark:text-green-400" : ""}`}>
+                {recurringIncome > 0 ? fmt(cashFlow) : fmt(totalBudget - totalSpent)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">{monthExpenses.length} výdavkov</p>
+              <p className="text-xs text-muted-foreground mt-1">{allMonthExpenses.length} výdavkov</p>
             </CardContent>
           </Card>
         </div>
@@ -214,12 +333,19 @@ export default function BudgetPage() {
           <TabsList>
             <TabsTrigger value="overview">Prehľad</TabsTrigger>
             <TabsTrigger value="expenses">Výdavky</TabsTrigger>
+            <TabsTrigger value="recurring">
+              Pravidelné
+              {recurring.filter((r) => r.active).length > 0 && (
+                <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">
+                  {recurring.filter((r) => r.active).length}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="categories">Kategórie</TabsTrigger>
           </TabsList>
 
           {/* ── Overview tab ── */}
           <TabsContent value="overview" className="space-y-6 mt-4">
-            {/* Bar chart */}
             {chartData.length > 0 && (
               <Card>
                 <CardHeader><CardTitle className="text-base">Minuté vs. limit</CardTitle></CardHeader>
@@ -242,7 +368,6 @@ export default function BudgetPage() {
               </Card>
             )}
 
-            {/* Category progress — inline edit */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -264,22 +389,13 @@ export default function BudgetPage() {
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs text-muted-foreground">{fmt(spent)} / {fmt(cat.monthlyLimit)}</span>
                           {over && <Badge variant="destructive" className="text-xs">Prekročené</Badge>}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5"
-                            title="Zmeniť limit"
-                            onClick={() => openEditCat(cat)}
-                          >
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => openEditCat(cat)}>
                             <Pencil className="w-3 h-3" />
                           </Button>
                         </div>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2">
-                        <div
-                          className="h-2 rounded-full transition-all"
-                          style={{ width: `${pct}%`, background: over ? "#ef4444" : cat.color }}
-                        />
+                        <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: over ? "#ef4444" : cat.color }} />
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
                         <span>{pct.toFixed(0)}% z limitu</span>
@@ -294,17 +410,18 @@ export default function BudgetPage() {
 
           {/* ── Expenses tab ── */}
           <TabsContent value="expenses" className="space-y-3 mt-4">
-            {monthExpenses.length === 0 ? (
+            {allMonthExpenses.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-muted-foreground">
-                  Žiadne výdavky pre {MONTH_NAMES[month]} {year}. Pridaj prvý.
+                  Žiadne výdavky pre {MONTH_NAMES[month]} {year}.
                 </CardContent>
               </Card>
             ) : (
-              [...monthExpenses]
+              [...allMonthExpenses]
                 .sort((a, b) => b.date.localeCompare(a.date))
                 .map((e) => {
                   const cat = categories.find((c) => c.id === e.categoryId);
+                  const isRecurring = (e as Expense & { _recurring?: boolean })._recurring;
                   return (
                     <Card key={e.id}>
                       <CardContent className="pt-3 pb-3 flex items-center gap-3">
@@ -313,20 +430,141 @@ export default function BudgetPage() {
                           {cat?.icon ?? "📦"}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{e.description}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium truncate">{e.description}</p>
+                            {isRecurring && <Badge variant="outline" className="text-xs shrink-0">Automatické</Badge>}
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {cat?.name ?? "—"} · {new Date(e.date).toLocaleDateString("sk-SK")}
                           </p>
                         </div>
                         <p className="font-bold text-sm shrink-0">{fmt(e.amount)}</p>
-                        <div className="flex gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" onClick={() => openEditExp(e)}><Pencil className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => deleteExp(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                        </div>
+                        {!isRecurring && (
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" onClick={() => openEditExp(e)}><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => deleteExp(e.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );
                 })
+            )}
+          </TabsContent>
+
+          {/* ── Recurring tab ── */}
+          <TabsContent value="recurring" className="space-y-4 mt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">Príjmy a výdavky sa automaticky zarátavajú každý mesiac.</p>
+              <Button size="sm" onClick={openAddRecur}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
+            </div>
+
+            {/* Income section */}
+            {recurring.filter(r => r.type === "income").length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">Príjmy</p>
+                {recurring.filter(r => r.type === "income").map((r) => {
+                  const dueLabel = r.frequency === "monthly" ? `každý mesiac, ${r.dayOfMonth}. deň` : `raz ročne, ${MONTH_NAMES[r.month ?? 0]} ${r.dayOfMonth}.`;
+                  return (
+                    <Card key={r.id} className={!r.active ? "opacity-50" : ""}>
+                      <CardContent className="pt-3 pb-3 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0" style={{ background: "#10b98120" }}>💵</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium">{r.description}</p>
+                            <Badge variant="secondary" className="text-xs shrink-0 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300">
+                              {r.frequency === "monthly" ? "Mesačný" : "Ročný"}
+                            </Badge>
+                            {!r.active && <Badge variant="outline" className="text-xs shrink-0 text-muted-foreground">Pozastavené</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{dueLabel}</p>
+                        </div>
+                        <p className="font-bold text-sm shrink-0 text-green-600 dark:text-green-400">+{fmt(r.amount)}</p>
+                        <div className="flex gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" onClick={() => toggleRecur(r.id)}><RefreshCw className={`w-4 h-4 ${r.active ? "" : "text-muted-foreground"}`} /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => openEditRecur(r)}><Pencil className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => deleteRecur(r.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Expense section */}
+            {recurring.filter(r => r.type !== "income").length > 0 && (
+              <div className="space-y-2">
+                {recurring.filter(r => r.type === "income").length > 0 && (
+                  <p className="text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide">Výdavky</p>
+                )}
+                {recurring.filter(r => r.type !== "income").map((r) => {
+                  const cat = categories.find((c) => c.id === r.categoryId);
+                  const dueLabel = r.frequency === "monthly" ? `každý mesiac, ${r.dayOfMonth}. deň` : `raz ročne, ${MONTH_NAMES[r.month ?? new Date(r.startDate).getMonth()]} ${r.dayOfMonth}.`;
+                  return (
+                    <Card key={r.id} className={!r.active ? "opacity-50" : ""}>
+                      <CardContent className="pt-3 pb-3 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0" style={{ background: `${cat?.color ?? "#888"}20` }}>
+                          {cat?.icon ?? "📦"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium">{r.description}</p>
+                            <Badge variant={r.frequency === "monthly" ? "secondary" : "outline"} className="text-xs shrink-0">
+                              {r.frequency === "monthly" ? "Mesačné" : "Ročné"}
+                            </Badge>
+                            {!r.active && <Badge variant="outline" className="text-xs shrink-0 text-muted-foreground">Pozastavené</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{cat?.name ?? "—"} · {dueLabel}</p>
+                        </div>
+                        <p className="font-bold text-sm shrink-0">{fmt(r.amount)}</p>
+                        <div className="flex gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" onClick={() => toggleRecur(r.id)}><RefreshCw className={`w-4 h-4 ${r.active ? "" : "text-muted-foreground"}`} /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => openEditRecur(r)}><Pencil className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => deleteRecur(r.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {recurring.length === 0 && (
+              <Card>
+                <CardContent className="py-10 text-center text-muted-foreground">
+                  Žiadne záznamy. Pridaj plat, nájomné, predplatné, poistky...
+                </CardContent>
+              </Card>
+            )}
+
+            {(recurringIncome > 0 || recurringMonthTotal > 0) && (
+              <Card className="bg-muted/30">
+                <CardContent className="pt-3 pb-3 space-y-1">
+                  {recurringIncome > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Príjmy ({MONTH_NAMES[month]})</span>
+                      <span className="font-bold text-green-600 dark:text-green-400">+{fmt(recurringIncome)}</span>
+                    </div>
+                  )}
+                  {recurringMonthTotal > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Výdavky ({MONTH_NAMES[month]})</span>
+                      <span className="font-bold">-{fmt(recurringMonthTotal)}</span>
+                    </div>
+                  )}
+                  {recurringIncome > 0 && (
+                    <div className="flex items-center justify-between border-t pt-1 mt-1">
+                      <span className="text-sm font-medium">Cash flow</span>
+                      <span className={`font-bold ${cashFlow >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>{fmt(cashFlow)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-muted-foreground">Ročné záväzky (výdavky)</span>
+                    <span className="text-sm">{fmt(recurring.filter(r => r.active && r.type !== "income").reduce((s, r) => s + (r.frequency === "annual" ? r.amount : r.amount * 12), 0))}</span>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 
@@ -430,6 +668,89 @@ export default function BudgetPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCatOpen(false)}>Zrušiť</Button>
             <Button onClick={saveCat}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit recurring expense dialog */}
+      <Dialog open={recurOpen} onOpenChange={setRecurOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{editingRecur ? "Upraviť pravidelný záznam" : "Nový pravidelný záznam"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex rounded-lg overflow-hidden border">
+              <button
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${recurForm.type === "expense" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                onClick={() => setRecurForm({ ...recurForm, type: "expense" })}
+              >
+                Výdavok
+              </button>
+              <button
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${recurForm.type === "income" ? "bg-green-600 text-white" : "text-muted-foreground hover:bg-muted"}`}
+                onClick={() => setRecurForm({ ...recurForm, type: "income" })}
+              >
+                Príjem
+              </button>
+            </div>
+            {recurForm.type === "expense" && (
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Kategória</label>
+                <Select value={recurForm.categoryId} onValueChange={(v) => setRecurForm({ ...recurForm, categoryId: v ?? "" })}>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {selectedRecurCat ? `${selectedRecurCat.icon} ${selectedRecurCat.name}` : "Vyber kategóriu"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.icon} {c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Popis</label>
+              <Input placeholder="napr. Nájomné, Netflix, PZP..." value={recurForm.description} onChange={(e) => setRecurForm({ ...recurForm, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Suma (€)</label>
+                <Input type="number" step="0.01" min="0" value={recurForm.amount || ""} onChange={(e) => setRecurForm({ ...recurForm, amount: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Frekvencia</label>
+                <Select value={recurForm.frequency} onValueChange={(v) => setRecurForm({ ...recurForm, frequency: (v ?? "monthly") as "monthly" | "annual" })}>
+                  <SelectTrigger><SelectValue>{recurForm.frequency === "monthly" ? "Mesačne" : "Ročne"}</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Mesačne</SelectItem>
+                    <SelectItem value="annual">Ročne</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {recurForm.frequency === "annual" && (
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Mesiac splatnosti</label>
+                  <Select value={String(recurForm.month ?? 0)} onValueChange={(v) => setRecurForm({ ...recurForm, month: parseInt(v ?? "0") })}>
+                    <SelectTrigger><SelectValue>{MONTH_NAMES[recurForm.month ?? 0]}</SelectValue></SelectTrigger>
+                    <SelectContent>
+                      {MONTH_NAMES.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Deň v mesiaci</label>
+                <Input type="number" min="1" max="28" value={recurForm.dayOfMonth} onChange={(e) => setRecurForm({ ...recurForm, dayOfMonth: parseInt(e.target.value) || 1 })} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Platí od</label>
+              <Input type="date" value={recurForm.startDate} onChange={(e) => setRecurForm({ ...recurForm, startDate: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecurOpen(false)}>Zrušiť</Button>
+            <Button onClick={saveRecur}>Uložiť</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
