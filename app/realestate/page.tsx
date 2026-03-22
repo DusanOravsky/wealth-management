@@ -177,7 +177,7 @@ export default function RealEstatePage() {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Typ</label>
                 <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: (v ?? "apartment") as RealEstateHolding["type"] })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue>{RE_TYPE_LABELS[form.type]}</SelectValue></SelectTrigger>
                   <SelectContent>
                     {Object.entries(RE_TYPE_LABELS).map(([val, label]) => (
                       <SelectItem key={val} value={val}>{label}</SelectItem>

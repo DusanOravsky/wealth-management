@@ -1,4 +1,4 @@
-import type { AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal, PriceAlert, Insurance } from "./types";
+import type { AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal, PriceAlert, Insurance, BudgetCategory, Expense } from "./types";
 import { STORE_KEYS, MAX_SNAPSHOTS } from "./constants";
 import { encrypt, decrypt } from "./crypto";
 
@@ -125,6 +125,30 @@ export function saveInsurance(items: Insurance[]): void {
   rawSet(STORE_KEYS.INSURANCE, JSON.stringify(items));
 }
 
+// ---------- Budget categories (plain JSON) ----------
+
+export function loadBudgetCategories(): BudgetCategory[] {
+  const raw = rawGet(STORE_KEYS.BUDGET_CATEGORIES);
+  if (!raw) return [];
+  try { return JSON.parse(raw) as BudgetCategory[]; } catch { return []; }
+}
+
+export function saveBudgetCategories(cats: BudgetCategory[]): void {
+  rawSet(STORE_KEYS.BUDGET_CATEGORIES, JSON.stringify(cats));
+}
+
+// ---------- Expenses (plain JSON) ----------
+
+export function loadExpenses(): Expense[] {
+  const raw = rawGet(STORE_KEYS.EXPENSES);
+  if (!raw) return [];
+  try { return JSON.parse(raw) as Expense[]; } catch { return []; }
+}
+
+export function saveExpenses(expenses: Expense[]): void {
+  rawSet(STORE_KEYS.EXPENSES, JSON.stringify(expenses));
+}
+
 // ---------- Session (in-memory only) ----------
 
 let _sessionPin: string | null = null;
@@ -159,5 +183,7 @@ export function wipeAll(): void {
   rawRemove(STORE_KEYS.GOALS);
   rawRemove(STORE_KEYS.ALERTS);
   rawRemove(STORE_KEYS.INSURANCE);
+  rawRemove(STORE_KEYS.BUDGET_CATEGORIES);
+  rawRemove(STORE_KEYS.EXPENSES);
   clearSession();
 }

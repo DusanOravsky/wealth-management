@@ -156,6 +156,26 @@ export interface PortfolioSummary {
   lastUpdated: string;
 }
 
+// Budget category
+export interface BudgetCategory {
+  id: string;
+  name: string;
+  color: string;
+  monthlyLimit: number; // EUR
+  icon: string; // emoji
+}
+
+// Expense entry
+export interface Expense {
+  id: string;
+  categoryId: string;
+  amount: number;
+  currency: Currency;
+  date: string; // YYYY-MM-DD
+  description: string;
+  note?: string;
+}
+
 // Insurance policy
 export interface Insurance {
   id: string;

@@ -298,7 +298,7 @@ export default function InsurancePage() {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Typ poistenia</label>
                 <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: (v ?? "other") as Insurance["type"] })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue>{TYPE_LABELS[form.type]}</SelectValue></SelectTrigger>
                   <SelectContent>
                     {Object.entries(TYPE_LABELS).map(([val, label]) => (
                       <SelectItem key={val} value={val}>{label}</SelectItem>
@@ -344,7 +344,7 @@ export default function InsurancePage() {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Automatická obnova</label>
                 <Select value={form.autoRenewal ? "yes" : "no"} onValueChange={(v) => setForm({ ...form, autoRenewal: (v ?? "no") === "yes" })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue>{form.autoRenewal ? "Áno" : "Nie"}</SelectValue></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="yes">Áno</SelectItem>
                     <SelectItem value="no">Nie</SelectItem>

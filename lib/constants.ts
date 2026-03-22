@@ -5,6 +5,8 @@ export const STORE_KEYS = {
   GOALS: "wm_goals",
   ALERTS: "wm_alerts",
   INSURANCE: "wm_insurance",
+  BUDGET_CATEGORIES: "wm_budget_categories",
+  EXPENSES: "wm_expenses",
 } as const;
 
 export const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
