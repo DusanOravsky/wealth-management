@@ -164,7 +164,21 @@ export function clearSession(): void { _sessionPin = null; }
 
 export async function exportBackup(pin: string, salt: string): Promise<string> {
   const portfolio = await loadPortfolio(pin, salt);
+  const settings = loadSettings();
+  // Export only non-sensitive settings fields (no PIN hash, salt, or encrypted API keys)
+  const settingsSnapshot = settings ? {
+    displayCurrency: settings.displayCurrency,
+    baseCurrency: settings.baseCurrency,
+    autoLockMinutes: settings.autoLockMinutes,
+    birthYear: settings.birthYear,
+    retirementAge: settings.retirementAge,
+    monthlyIncome: settings.monthlyIncome,
+    googleClientId: settings.googleClientId,
+  } : undefined;
   return JSON.stringify({
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings: settingsSnapshot,
     portfolio,
     goals: loadGoals(),
     snapshots: loadSnapshots(),
@@ -172,7 +186,6 @@ export async function exportBackup(pin: string, salt: string): Promise<string> {
     insurance: loadInsurance(),
     budgetCategories: loadBudgetCategories(),
     expenses: loadExpenses(),
-    exportedAt: new Date().toISOString(),
   }, null, 2);
 }
 
@@ -185,6 +198,22 @@ export async function importBackup(json: string, pin: string, salt: string): Pro
   if (data.insurance) saveInsurance(data.insurance as Insurance[]);
   if (data.budgetCategories) saveBudgetCategories(data.budgetCategories as BudgetCategory[]);
   if (data.expenses) saveExpenses(data.expenses as Expense[]);
+  // Merge non-sensitive settings (preserve PIN/salt/API keys from current device)
+  if (data.settings) {
+    const current = loadSettings();
+    if (current) {
+      saveSettings({
+        ...current,
+        displayCurrency: data.settings.displayCurrency ?? current.displayCurrency,
+        baseCurrency: data.settings.baseCurrency ?? current.baseCurrency,
+        autoLockMinutes: data.settings.autoLockMinutes ?? current.autoLockMinutes,
+        birthYear: data.settings.birthYear ?? current.birthYear,
+        retirementAge: data.settings.retirementAge ?? current.retirementAge,
+        monthlyIncome: data.settings.monthlyIncome ?? current.monthlyIncome,
+        googleClientId: data.settings.googleClientId ?? current.googleClientId,
+      });
+    }
+  }
 }
 
 // ---------- Full wipe ----------

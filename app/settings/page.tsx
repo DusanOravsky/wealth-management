@@ -362,27 +362,33 @@ export default function SettingsPage() {
         {/* Export / Import */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Export / Import zálohy</CardTitle>
+            <CardTitle className="text-base">Export / Import dát</CardTitle>
             <CardDescription>
-              Export uloží dešifrované portfólio ako JSON. Import prepíše aktuálne dáta.
+              Záloha obsahuje všetky dáta: portfólio, ciele, výdavky, poistenie, alerty, nastavenia profilu.
+              PIN a API kľúče sa <strong>neexportujú</strong> — zostávajú na zariadení.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Exportovať zálohu
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => importRef.current?.click()}>
-              <Upload className="w-4 h-4 mr-2" />
-              Importovať zálohu
-            </Button>
-            <input
-              ref={importRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleImport}
-            />
+          <CardContent className="space-y-3">
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={handleExport}>
+                <Download className="w-4 h-4 mr-2" />
+                Exportovať zálohu
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => importRef.current?.click()}>
+                <Upload className="w-4 h-4 mr-2" />
+                Importovať zálohu
+              </Button>
+              <input
+                ref={importRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={handleImport}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pri importe sa zlúčia nastavenia profilu. Portfólio, výdavky a ostatné dáta sa prepíšu.
+            </p>
           </CardContent>
         </Card>
 
