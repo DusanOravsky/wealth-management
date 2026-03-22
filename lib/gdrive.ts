@@ -1,7 +1,7 @@
 // Google Drive sync via Google Identity Services (GIS) + Drive REST API
 // Uses appDataFolder scope — backup file is hidden from user's Drive, only this app can see it.
 
-const DRIVE_FILES_API = "https://www.googleapis.com/drive/v3/files";
+const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files";
 const BACKUP_FILENAME = "wealth-management-backup.json";
 export const GDRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
@@ -12,31 +12,30 @@ const LAST_SYNC_KEY = "wm_gdrive_last_sync";
 let gisLoaded = false;
 
 export function loadGIS(): Promise<void> {
-  if (gisLoaded || (typeof window !== "undefined" && (window as unknown as Record<string, unknown>).google)) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (gisLoaded || (window as any).google?.accounts) {
     gisLoaded = true;
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src*="accounts.google.com/gsi"]');
+    if (existing) { existing.addEventListener("load", () => { gisLoaded = true; resolve(); }); return; }
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
-    script.defer = true;
     script.onload = () => { gisLoaded = true; resolve(); };
     script.onerror = () => reject(new Error("Nepodarilo sa načítať Google Identity Services."));
     document.head.appendChild(script);
   });
 }
 
-// ── OAuth2 token request (opens Google popup) ────────────────────────────────
+// ── OAuth2 token request ──────────────────────────────────────────────────────
 
 export function requestAccessToken(clientId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const google = (window as any).google;
-    if (!google?.accounts?.oauth2) {
-      reject(new Error("Google Identity Services nie je načítané."));
-      return;
-    }
+    if (!google?.accounts?.oauth2) { reject(new Error("Google Identity Services nie je načítané.")); return; }
     const client = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: GDRIVE_SCOPE,
@@ -46,52 +45,82 @@ export function requestAccessToken(clientId: string): Promise<string> {
         else reject(new Error("Google nevrátil access token."));
       },
     });
-    client.requestAccessToken({ prompt: "consent" });
+    client.requestAccessToken();
   });
 }
 
-// ── Drive file helpers ────────────────────────────────────────────────────────
+// ── Drive helpers ─────────────────────────────────────────────────────────────
 
-interface DriveFile {
-  id: string;
-  name: string;
-  modifiedTime: string;
-}
+interface DriveFile { id: string; modifiedTime: string; }
 
-async function listBackupFiles(token: string): Promise<DriveFile[]> {
-  const url = `${DRIVE_FILES_API}?spaces=appDataFolder&fields=files(id,name,modifiedTime)&q=name%3D'${BACKUP_FILENAME}'`;
+async function driveGet<T>(url: string, token: string): Promise<T> {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(`Drive API chyba: ${res.status}`);
-  const data = await res.json();
-  return (data.files ?? []) as DriveFile[];
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Drive API ${res.status}: ${JSON.stringify(err)}`);
+  }
+  return res.json();
 }
 
-// ── Upload (create or update) ─────────────────────────────────────────────────
+async function findBackupFile(token: string): Promise<DriveFile | null> {
+  const url = `${DRIVE_API}?spaces=appDataFolder&fields=files(id,modifiedTime)&q=name+%3D+'${BACKUP_FILENAME}'`;
+  const data = await driveGet<{ files: DriveFile[] }>(url, token);
+  return data.files?.[0] ?? null;
+}
+
+// ── Upload (simple media upload — avoids multipart CORS issues) ───────────────
 
 export async function uploadToDrive(token: string, content: string): Promise<string> {
-  const files = await listBackupFiles(token);
-  const isUpdate = files.length > 0;
+  const existing = await findBackupFile(token);
 
-  const metadata = isUpdate
-    ? { name: BACKUP_FILENAME }
-    : { name: BACKUP_FILENAME, parents: ["appDataFolder"] };
+  if (existing) {
+    // Update existing file content
+    const res = await fetch(`${UPLOAD_API}/${existing.id}?uploadType=media&fields=modifiedTime`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: content,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`Aktualizácia zlyhala ${res.status}: ${JSON.stringify(err)}`);
+    }
+    const data = await res.json();
+    const ts = data.modifiedTime ?? new Date().toISOString();
+    localStorage.setItem(LAST_SYNC_KEY, ts);
+    return ts;
+  }
 
-  const form = new FormData();
-  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  form.append("file", new Blob([content], { type: "application/json" }));
-
-  const url = isUpdate
-    ? `${UPLOAD_API}/${files[0].id}?uploadType=multipart&fields=modifiedTime`
-    : `${UPLOAD_API}?uploadType=multipart&fields=modifiedTime`;
-
-  const res = await fetch(url, {
-    method: isUpdate ? "PATCH" : "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
+  // Create new file — first create metadata, then upload content
+  const metaRes = await fetch(`${DRIVE_API}?fields=id`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: BACKUP_FILENAME, parents: ["appDataFolder"] }),
   });
-  if (!res.ok) throw new Error(`Nahrávanie zlyhalo: ${res.status}`);
+  if (!metaRes.ok) {
+    const err = await metaRes.json().catch(() => ({}));
+    throw new Error(`Vytvorenie súboru zlyhalo ${metaRes.status}: ${JSON.stringify(err)}`);
+  }
+  const { id } = await metaRes.json();
 
-  const data = await res.json();
+  const uploadRes = await fetch(`${UPLOAD_API}/${id}?uploadType=media&fields=modifiedTime`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: content,
+  });
+  if (!uploadRes.ok) {
+    const err = await uploadRes.json().catch(() => ({}));
+    throw new Error(`Nahrávanie zlyhalo ${uploadRes.status}: ${JSON.stringify(err)}`);
+  }
+  const data = await uploadRes.json();
   const ts = data.modifiedTime ?? new Date().toISOString();
   localStorage.setItem(LAST_SYNC_KEY, ts);
   return ts;
@@ -100,21 +129,23 @@ export async function uploadToDrive(token: string, content: string): Promise<str
 // ── Download ──────────────────────────────────────────────────────────────────
 
 export async function downloadFromDrive(token: string): Promise<{ content: string; modifiedTime: string } | null> {
-  const files = await listBackupFiles(token);
-  if (files.length === 0) return null;
+  const file = await findBackupFile(token);
+  if (!file) return null;
 
-  const file = files[0];
-  const res = await fetch(`${DRIVE_FILES_API}/${file.id}?alt=media`, {
+  const res = await fetch(`${DRIVE_API}/${file.id}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`Sťahovanie zlyhalo: ${res.status}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Sťahovanie zlyhalo ${res.status}: ${JSON.stringify(err)}`);
+  }
 
   const content = await res.text();
   localStorage.setItem(LAST_SYNC_KEY, file.modifiedTime);
   return { content, modifiedTime: file.modifiedTime };
 }
 
-// ── Last sync timestamp ───────────────────────────────────────────────────────
+// ── Last sync ─────────────────────────────────────────────────────────────────
 
 export function getLastSync(): string | null {
   if (typeof window === "undefined") return null;
