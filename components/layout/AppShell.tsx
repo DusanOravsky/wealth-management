@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { PINScreen } from "@/components/auth/PINScreen";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
+import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pinState } = useApp();
@@ -58,6 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <PWAInstallBanner />
     </div>
   );
 }

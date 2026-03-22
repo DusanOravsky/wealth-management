@@ -275,7 +275,7 @@ export default function SettingsPage() {
             <div className="flex gap-2">
               <Input
                 type={showKeys ? "text" : "password"}
-                placeholder="API Key"
+                placeholder={settings?.binanceKey ? "Kľúč je uložený — zadaj nový pre zmenu" : "API Key"}
                 value={binanceKey}
                 onChange={(e) => setBinanceKey(e.target.value)}
                 className={keyInputClass}
@@ -287,7 +287,7 @@ export default function SettingsPage() {
             <div className="flex gap-2">
               <Input
                 type={showKeys ? "text" : "password"}
-                placeholder="Secret Key"
+                placeholder={settings?.binanceSecret ? "Kľúč je uložený — zadaj nový pre zmenu" : "Secret Key"}
                 value={binanceSecret}
                 onChange={(e) => setBinanceSecret(e.target.value)}
                 className={keyInputClass}
@@ -316,7 +316,7 @@ export default function SettingsPage() {
             <div className="flex gap-2">
               <Input
                 type={showKeys ? "text" : "password"}
-                placeholder="CoinGecko Demo API Key"
+                placeholder={settings?.coingeckoKey ? "Kľúč je uložený — zadaj nový pre zmenu" : "CoinGecko Demo API Key"}
                 value={coingeckoKey}
                 onChange={(e) => setCoingeckoKey(e.target.value)}
                 className={keyInputClass}
@@ -343,7 +343,7 @@ export default function SettingsPage() {
             <div className="flex gap-2">
               <Input
                 type={showKeys ? "text" : "password"}
-                placeholder="sk-ant-..."
+                placeholder={settings?.claudeKey ? "Kľúč je uložený — zadaj nový pre zmenu" : "sk-ant-..."}
                 value={claudeKey}
                 onChange={(e) => setClaudeKey(e.target.value)}
                 className={keyInputClass}

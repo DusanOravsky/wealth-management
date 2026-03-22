@@ -36,7 +36,13 @@ const PRIORITY_LABELS = { high: "Vysoká", medium: "Stredná", low: "Nízka" };
 
 export default function AdvisorPage() {
   const { portfolio, goldPrice, silverPrice, cryptoPrices, rates, pin, settings } = useApp();
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem("wm_recommendations");
+      return raw ? (JSON.parse(raw) as Recommendation[]) : [];
+    } catch { return []; }
+  });
   const [loading, setLoading] = useState(false);
 
   const summary = useMemo(() => {
@@ -58,6 +64,7 @@ export default function AdvisorPage() {
     try {
       const recs = await fetchRecommendations(summary, claudeKey);
       setRecommendations(recs);
+      localStorage.setItem("wm_recommendations", JSON.stringify(recs));
       toast.success("Odporúčania vygenerované.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Chyba pri generovaní odporúčaní.");
