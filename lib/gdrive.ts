@@ -53,7 +53,8 @@ export function requestAccessToken(clientId: string): Promise<string> {
         else reject(new Error("Google nevrátil access token."));
       },
     });
-    client.requestAccessToken();
+    // prompt:'consent' forces fresh consent screen so token always includes drive.appdata scope
+    client.requestAccessToken({ prompt: "consent" });
   });
 }
 
