@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useRef,
 import { usePIN } from "@/hooks/usePIN";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { usePrices } from "@/hooks/usePrices";
-import { loadApiKey, loadGoals, saveGoals, loadSnapshots, saveSnapshot } from "@/lib/store";
+import { loadApiKey, loadGoals, saveGoals, loadSnapshots, saveSnapshot, loadAlerts, saveAlerts } from "@/lib/store";
 import { DEFAULT_CRYPTO_IDS } from "@/lib/constants";
 import { calcPortfolioSummary, groupByCategory } from "@/lib/portfolio-calc";
 import type {
@@ -131,6 +131,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     saveSnapshot({ date: today, totalEur: portfolioSummary.totalEur, breakdown });
     setSnapshots(loadSnapshots());
   }, [portfolioSummary, pricesLoading]);
+
+  // Check price alerts whenever prices update
+  useEffect(() => {
+    if (pricesLoading) return;
+    if (goldPrice === 0 && silverPrice === 0 && cryptoPrices.length === 0) return;
+    const alerts = loadAlerts();
+    let changed = false;
+    for (const alert of alerts) {
+      if (alert.triggered) continue;
+      let currentPrice = 0;
+      if (alert.assetType === "gold") currentPrice = goldPrice;
+      else if (alert.assetType === "silver") currentPrice = silverPrice;
+      else if (alert.assetType === "crypto" && alert.coinId) {
+        const found = cryptoPrices.find((p) => p.id === alert.coinId);
+        currentPrice = found?.current_price ?? 0;
+      }
+      if (currentPrice === 0) continue;
+      const hit = alert.condition === "above"
+        ? currentPrice >= alert.targetPrice
+        : currentPrice <= alert.targetPrice;
+      if (hit) {
+        alert.triggered = true;
+        changed = true;
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          new Notification(`Alert: ${alert.label}`, {
+            body: `Cena ${alert.condition === "above" ? "prekročila" : "klesla pod"} ${alert.targetPrice} € (aktuálne: ${currentPrice.toFixed(2)} €)`,
+            icon: "/wealth-management/icon-192.png",
+          });
+        }
+      }
+    }
+    if (changed) saveAlerts(alerts);
+  }, [goldPrice, silverPrice, cryptoPrices, pricesLoading]);
 
   const value: AppContextValue = useMemo(
     () => ({

@@ -156,6 +156,18 @@ export interface PortfolioSummary {
   lastUpdated: string;
 }
 
+// Price alert
+export interface PriceAlert {
+  id: string;
+  assetType: "gold" | "silver" | "crypto";
+  coinId?: string;   // for crypto — CoinGecko ID
+  label: string;     // display name, e.g. "Bitcoin", "Zlato"
+  condition: "above" | "below";
+  targetPrice: number; // EUR
+  triggered: boolean;
+  createdAt: string;
+}
+
 // AI Recommendation
 export interface Recommendation {
   category: "allocation" | "risk" | "opportunity" | "warning";
