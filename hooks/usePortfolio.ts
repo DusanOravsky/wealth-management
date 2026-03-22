@@ -10,6 +10,8 @@ const DEFAULT_PORTFOLIO: PortfolioData = {
   pension: [],
   bankAccounts: [],
   crypto: [],
+  stocks: [],
+  realestate: [],
   updatedAt: new Date().toISOString(),
 };
 

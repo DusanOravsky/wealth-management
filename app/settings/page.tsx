@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound } from "lucide-react";
+import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User } from "lucide-react";
 import { toast } from "sonner";
 import { CURRENCIES, AUTO_LOCK_DEFAULT_MINUTES, PIN_MIN_LENGTH } from "@/lib/constants";
 import type { Currency } from "@/lib/types";
@@ -166,6 +166,74 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Personal profile */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <User className="w-4 h-4" /> Osobný profil
+            </CardTitle>
+            <CardDescription>
+              Použije sa v FIRE kalkulátore a plánovaní dôchodku.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">Rok narodenia</label>
+                <Input
+                  type="number"
+                  placeholder="napr. 1990"
+                  value={settings?.birthYear ?? ""}
+                  onChange={(e) => {
+                    if (!settings) return;
+                    const v = parseInt(e.target.value);
+                    updateSettings({ ...settings, birthYear: isNaN(v) ? undefined : v });
+                  }}
+                  min={1940}
+                  max={new Date().getFullYear() - 18}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">Cieľový vek dôchodku</label>
+                <Input
+                  type="number"
+                  placeholder="65"
+                  value={settings?.retirementAge ?? ""}
+                  onChange={(e) => {
+                    if (!settings) return;
+                    const v = parseInt(e.target.value);
+                    updateSettings({ ...settings, retirementAge: isNaN(v) ? undefined : v });
+                  }}
+                  min={40}
+                  max={80}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-muted-foreground">Čistý mes. príjem (€)</label>
+                <Input
+                  type="number"
+                  placeholder="napr. 2500"
+                  value={settings?.monthlyIncome ?? ""}
+                  onChange={(e) => {
+                    if (!settings) return;
+                    const v = parseInt(e.target.value);
+                    updateSettings({ ...settings, monthlyIncome: isNaN(v) ? undefined : v });
+                  }}
+                  min={0}
+                />
+              </div>
+            </div>
+            {settings?.birthYear && (
+              <p className="text-xs text-muted-foreground">
+                Aktuálny vek: <strong>{new Date().getFullYear() - settings.birthYear} rokov</strong>
+                {settings.retirementAge && (
+                  <> · Do dôchodku: <strong>{Math.max(0, settings.retirementAge - (new Date().getFullYear() - settings.birthYear))} rokov</strong></>
+                )}
+              </p>
+            )}
           </CardContent>
         </Card>
 

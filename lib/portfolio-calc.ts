@@ -73,6 +73,27 @@ export function calcPortfolioSummary(
     });
   }
 
+  // Stocks — use currentPrice if set, otherwise purchasePrice as cost basis
+  for (const s of portfolio.stocks ?? []) {
+    const pricePerShare = s.currentPrice ?? s.purchasePrice;
+    const valueEur = toEur(s.amount * pricePerShare, s.currency, prices.rates);
+    assets.push({
+      label: `${s.name} (${s.ticker})`,
+      valueEur,
+      category: "stock",
+    });
+  }
+
+  // Real estate — use estimatedValue
+  for (const r of portfolio.realestate ?? []) {
+    const valueEur = toEur(r.estimatedValue, r.currency, prices.rates);
+    assets.push({
+      label: r.name,
+      valueEur,
+      category: "realestate",
+    });
+  }
+
   const totalEur = assets.reduce((sum, a) => sum + a.valueEur, 0);
 
   return {

@@ -9,7 +9,7 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
 } from "recharts";
-import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -18,6 +18,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   pension: "#a78bfa",
   bank: "#38bdf8",
   crypto: "#fb923c",
+  stock: "#60a5fa",
+  realestate: "#10b981",
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -26,6 +28,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   pension: "II. Pilier",
   bank: "Bankové účty",
   crypto: "Krypto",
+  stock: "Akcie",
+  realestate: "Nehnuteľnosti",
 };
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -34,6 +38,8 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
   pension: PiggyBank,
   bank: Building2,
   crypto: Bitcoin,
+  stock: LineChart,
+  realestate: Home,
 };
 
 function groupByCategory(assets: { category: string; valueEur: number }[]) {

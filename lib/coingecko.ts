@@ -65,11 +65,20 @@ export async function fetchCommodityPrices(
   try {
     const res = await fetch("https://api.metals.live/v1/spot/gold,silver");
     if (res.ok) {
-      const data: { gold?: number; silver?: number } = await res.json();
-      return {
-        gold: (data.gold ?? 0) * eurConvert,
-        silver: (data.silver ?? 0) * eurConvert,
-      };
+      // metals.live returns an array: [{"gold": 1900}, {"silver": 23}]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await res.json();
+      let gold = 0, silver = 0;
+      if (Array.isArray(raw)) {
+        for (const item of raw) {
+          if (item.gold !== undefined) gold = item.gold;
+          if (item.silver !== undefined) silver = item.silver;
+        }
+      } else {
+        gold = raw.gold ?? 0;
+        silver = raw.silver ?? 0;
+      }
+      return { gold: gold * eurConvert, silver: silver * eurConvert };
     }
   } catch {
     // fall through to CoinGecko fallback

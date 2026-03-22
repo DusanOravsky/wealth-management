@@ -50,12 +50,38 @@ export interface CryptoHolding {
   note?: string;
 }
 
+export interface StockHolding {
+  id: string;
+  ticker: string;       // e.g. "AAPL"
+  name: string;         // e.g. "Apple Inc."
+  amount: number;       // number of shares
+  purchasePrice: number; // price per share at purchase
+  currentPrice?: number; // manually updated current price
+  currency: Currency;
+  exchange?: string;    // e.g. "NASDAQ", "Bratislavská burza"
+  note?: string;
+}
+
+export interface RealEstateHolding {
+  id: string;
+  name: string;         // e.g. "Byt Bratislava"
+  type: "apartment" | "house" | "cottage" | "land" | "commercial" | "other";
+  estimatedValue: number; // current estimated market value
+  currency: Currency;
+  purchasePrice?: number;
+  purchaseYear?: number;
+  area?: number;        // m²
+  note?: string;
+}
+
 export interface PortfolioData {
   commodities: Commodity[];
   cash: CashEntry[];
   pension: PensionEntry[];
   bankAccounts: BankAccount[];
   crypto: CryptoHolding[];
+  stocks: StockHolding[];
+  realestate: RealEstateHolding[];
   updatedAt: string;
 }
 
@@ -70,7 +96,11 @@ export interface AppSettings {
   claudeKey?: string;
   baseCurrency: Currency;
   displayCurrency?: Currency;
-  autoLockMinutes?: number; // default 5
+  autoLockMinutes?: number;
+  // Personal profile
+  birthYear?: number;
+  retirementAge?: number; // target retirement age, default 65
+  monthlyIncome?: number; // net monthly income in baseCurrency
 }
 
 export interface StoredData {
@@ -117,7 +147,7 @@ export interface CommodityPrice {
 export interface AssetSummary {
   label: string;
   valueEur: number;
-  category: "commodity" | "cash" | "pension" | "bank" | "crypto";
+  category: "commodity" | "cash" | "pension" | "bank" | "crypto" | "stock" | "realestate";
 }
 
 export interface PortfolioSummary {

@@ -13,19 +13,23 @@ import {
 } from "recharts";
 
 const TARGET_ALLOCATION: Record<string, number> = {
-  cash: 10,
-  bank: 15,
-  pension: 20,
-  commodity: 20,
-  crypto: 35,
+  cash: 5,
+  bank: 10,
+  pension: 10,
+  commodity: 15,
+  crypto: 20,
+  stock: 25,
+  realestate: 15,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
   commodity: "Komodity", cash: "Hotovosť", pension: "II. Pilier", bank: "Banka", crypto: "Krypto",
+  stock: "Akcie", realestate: "Nehnuteľnosti",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
   commodity: "#f59e0b", cash: "#10b981", pension: "#6366f1", bank: "#3b82f6", crypto: "#f97316",
+  stock: "#60a5fa", realestate: "#34d399",
 };
 
 function fmt(n: number) {
@@ -52,7 +56,7 @@ function calcMonthsToFIRE(
 }
 
 export default function PlanningPage() {
-  const { portfolioSummary } = useApp();
+  const { portfolioSummary, settings } = useApp();
 
   const grouped = useMemo(
     () => (portfolioSummary ? groupByCategory(portfolioSummary) : {}),
@@ -90,8 +94,18 @@ export default function PlanningPage() {
   );
 
   const years = isFinite(months) ? months / 12 : null;
-  const targetYear = years != null ? new Date().getFullYear() + Math.ceil(years) : null;
+  const currentYear = new Date().getFullYear();
+  const targetYear = years != null ? currentYear + Math.ceil(years) : null;
   const progressPct = Math.min(100, (total / fireNumber) * 100);
+
+  // Profile-based calculations
+  const currentAge = settings?.birthYear ? currentYear - settings.birthYear : null;
+  const ageAtFire = currentAge != null && years != null ? currentAge + years : null;
+  const retirementAge = settings?.retirementAge ?? 65;
+  const yearsToOfficialRetirement = currentAge != null ? retirementAge - currentAge : null;
+  const savingsRate = settings?.monthlyIncome && settings.monthlyIncome > 0
+    ? (monthlyContrib / settings.monthlyIncome) * 100
+    : null;
 
   return (
     <AppShell>
@@ -277,9 +291,7 @@ export default function PlanningPage() {
                 <CardContent className="pt-6">
                   <p className="text-muted-foreground text-sm">Zostatok do FIRE</p>
                   <p className="text-2xl font-bold mt-1">
-                    {years != null
-                      ? `${years.toFixed(1)} r.`
-                      : "∞"}
+                    {years != null ? `${years.toFixed(1)} r.` : "∞"}
                   </p>
                   <p className="text-muted-foreground text-xs mt-1">
                     {targetYear ? `cca rok ${targetYear}` : "Navýš mesačnú investíciu"}
@@ -287,6 +299,52 @@ export default function PlanningPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Profile-based stats */}
+            {(currentAge != null || savingsRate != null) && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {currentAge != null && (
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-muted-foreground">Vek teraz</p>
+                      <p className="text-xl font-bold mt-0.5">{currentAge} r.</p>
+                    </CardContent>
+                  </Card>
+                )}
+                {ageAtFire != null && (
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-muted-foreground">Vek pri FIRE</p>
+                      <p className="text-xl font-bold mt-0.5">{ageAtFire.toFixed(1)} r.</p>
+                      {yearsToOfficialRetirement != null && ageAtFire < retirementAge && (
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                          {(retirementAge - ageAtFire).toFixed(1)} r. pred dôchodkom
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+                {yearsToOfficialRetirement != null && (
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-muted-foreground">Do dôchodku ({retirementAge} r.)</p>
+                      <p className="text-xl font-bold mt-0.5">
+                        {yearsToOfficialRetirement > 0 ? `${yearsToOfficialRetirement} r.` : "Dosiahnutý"}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+                {savingsRate != null && (
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-xs text-muted-foreground">Miera úspor</p>
+                      <p className="text-xl font-bold mt-0.5">{savingsRate.toFixed(1)}%</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">z príjmu</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
 
             {/* Progress bar */}
             <Card>

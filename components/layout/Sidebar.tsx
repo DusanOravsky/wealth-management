@@ -21,6 +21,8 @@ import {
   Target,
   X,
   TrendingUp,
+  LineChart,
+  Home,
 } from "lucide-react";
 
 const navItems = [
@@ -30,6 +32,8 @@ const navItems = [
   { href: "/pension", label: "II. Pilier", icon: PiggyBank, color: "#a78bfa" },
   { href: "/bank", label: "Bankové účty", icon: Building2, color: "#38bdf8" },
   { href: "/crypto", label: "Krypto", icon: Bitcoin, color: "#fb923c" },
+  { href: "/stocks", label: "Akcie", icon: LineChart, color: "#60a5fa" },
+  { href: "/realestate", label: "Nehnuteľnosti", icon: Home, color: "#10b981" },
   { href: "/planning", label: "Plánovanie", icon: BarChart3, color: "#818cf8" },
   { href: "/goals", label: "Ciele", icon: Target, color: "#f472b6" },
   { href: "/advisor", label: "AI Poradca", icon: Sparkles, color: "#c084fc" },
