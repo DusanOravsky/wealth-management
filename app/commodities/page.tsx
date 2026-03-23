@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Banknote, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Banknote, ChevronDown, ChevronUp, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { Commodity, Currency } from "@/lib/types";
 import { CURRENCIES, COMMODITY_META, FALLBACK_RATES } from "@/lib/constants";
@@ -87,6 +87,8 @@ export default function CommoditiesPage() {
   const [sellPrice, setSellPrice] = useState("");
 
   const [showSold, setShowSold] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterSymbol, setFilterSymbol] = useState("ALL");
 
   const commodities = portfolio?.commodities ?? [];
 
@@ -97,6 +99,30 @@ export default function CommoditiesPage() {
     return a.purchaseDate.localeCompare(b.purchaseDate);
   });
   const soldItems = commodities.filter((c) => c.sold);
+
+  const symbols = [...new Set(active.map((c) => c.symbol))];
+
+  const filtered = active.filter((c) => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || c.name.toLowerCase().includes(q) || (c.note?.toLowerCase().includes(q) ?? false);
+    const matchSymbol = filterSymbol === "ALL" || c.symbol === filterSymbol;
+    return matchSearch && matchSymbol;
+  });
+
+  const groups = (filterSymbol === "ALL" ? symbols : symbols.filter((s) => s === filterSymbol)).map((sym) => {
+    const items = filtered.filter((c) => c.symbol === sym);
+    const totalGrams = items.reduce((s, c) => {
+      if (c.unit === "g") return s + c.amount;
+      if (c.unit === "oz") return s + c.amount * 31.1035;
+      if (c.unit === "kg") return s + c.amount * 1000;
+      return s;
+    }, 0);
+    const groupInvested = items.reduce((s, c) => s + getCostEur(c), 0);
+    const groupValue = items.reduce((s, c) => s + getValueEur(c), 0);
+    const groupGain = groupValue - groupInvested;
+    const groupGainPct = groupInvested > 0 ? (groupGain / groupInvested) * 100 : 0;
+    return { sym, items, totalGrams, groupInvested, groupValue, groupGain, groupGainPct };
+  });
 
   // ── price helpers ──────────────────────────────────────────────────────────
 
@@ -287,74 +313,126 @@ export default function CommoditiesPage() {
           </Button>
         )}
 
-        {/* Active holdings */}
+        {/* Search + symbol filter */}
+        {active.length > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-40">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Hľadať..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => setFilterSymbol("ALL")}
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${filterSymbol === "ALL" ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"}`}
+              >
+                Všetky
+              </button>
+              {symbols.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setFilterSymbol(s)}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${filterSymbol === s ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"}`}
+                >
+                  {COMMODITY_META[s]?.name ?? s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Active holdings — grouped by symbol */}
         {active.length === 0 && commodities.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-muted-foreground text-sm">
               Žiadne komodity. Klikni na &quot;Pridať&quot; alebo naimportuj historické nákupy.
             </CardContent>
           </Card>
+        ) : filtered.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground text-sm">Žiadne výsledky.</CardContent>
+          </Card>
         ) : (
-          <div className="space-y-2">
-            {active.map((c) => {
-              const value = getValueEur(c);
-              const cost = getCostEur(c);
-              const gain = value - cost;
-              const gainPct = cost > 0 ? (gain / cost) * 100 : 0;
-              const hasCost = cost > 0;
-
-              return (
-                <Card key={c.id}>
-                  <CardContent className="pt-3 pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      {/* Left: name, date, amount */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-sm">{c.name}</span>
-                          <Badge variant="outline" className="text-xs px-1.5 py-0">{c.symbol}</Badge>
-                          {c.purchaseDate && (
-                            <span className="text-xs text-muted-foreground">{fmtDate(c.purchaseDate)}</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {c.amount} {c.unit}
-                          {c.note && ` · ${c.note}`}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          {hasCost && (
-                            <span className="text-xs text-muted-foreground">{fmt(cost)}</span>
-                          )}
-                          {hasCost && value > 0 && (
-                            <span className="text-xs">→</span>
-                          )}
-                          {value > 0 && (
-                            <span className="text-xs font-medium">{fmt(value)}</span>
-                          )}
-                          {hasCost && value > 0 && (
-                            <span className={`text-xs font-semibold flex items-center gap-0.5 ${gain >= 0 ? "text-green-600" : "text-red-500"}`}>
-                              {gain >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                              {gain >= 0 ? "+" : ""}{fmt(gain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(0)} %)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {/* Right: action buttons */}
-                      <div className="flex gap-1 shrink-0 mt-0.5">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(c)}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openSell(c)}>
-                          <Banknote className="w-3.5 h-3.5 text-amber-500" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
-                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                        </Button>
-                      </div>
+          <div className="space-y-4">
+            {groups.map(({ sym, items, totalGrams, groupInvested, groupValue, groupGain, groupGainPct }) => (
+              items.length === 0 ? null : (
+                <div key={sym} className="space-y-2">
+                  {/* Group header */}
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{COMMODITY_META[sym]?.name ?? sym}</span>
+                      <Badge variant="secondary" className="text-xs">{sym}</Badge>
+                      <span className="text-xs text-muted-foreground">{totalGrams.toFixed(1)} g · {items.length} položiek</span>
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                    <div className="text-right">
+                      <span className="text-xs font-medium">{groupValue > 0 ? fmt(groupValue) : "—"}</span>
+                      {groupInvested > 0 && groupValue > 0 && (
+                        <span className={`text-xs ml-2 ${groupGain >= 0 ? "text-green-600" : "text-red-500"}`}>
+                          {groupGain >= 0 ? "+" : ""}{groupGainPct.toFixed(0)} %
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Items */}
+                  {items.map((c) => {
+                    const value = getValueEur(c);
+                    const cost = getCostEur(c);
+                    const gain = value - cost;
+                    const gainPct = cost > 0 ? (gain / cost) * 100 : 0;
+                    const hasCost = cost > 0;
+
+                    return (
+                      <Card key={c.id}>
+                        <CardContent className="pt-3 pb-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-medium text-sm">{c.name}</span>
+                                {c.purchaseDate && (
+                                  <span className="text-xs text-muted-foreground">{fmtDate(c.purchaseDate)}</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {c.amount} {c.unit}
+                                {c.note && ` · ${c.note}`}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                {hasCost && <span className="text-xs text-muted-foreground">{fmt(cost)}</span>}
+                                {hasCost && value > 0 && <span className="text-xs">→</span>}
+                                {value > 0 && <span className="text-xs font-medium">{fmt(value)}</span>}
+                                {hasCost && value > 0 && (
+                                  <span className={`text-xs font-semibold flex items-center gap-0.5 ${gain >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                    {gain >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                    {gain >= 0 ? "+" : ""}{fmt(gain)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(0)} %)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-1 shrink-0 mt-0.5">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(c)}>
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openSell(c)}>
+                                <Banknote className="w-3.5 h-3.5 text-amber-500" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
+                                <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )
+            ))}
           </div>
         )}
 
