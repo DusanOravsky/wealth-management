@@ -154,7 +154,6 @@ export async function fetchRecommendations(
   try {
     return JSON.parse(text) as Recommendation[];
   } catch {
-    console.error("Claude response could not be parsed:", text);
-    throw new Error("Nepodarilo sa spracovať odpoveď AI. Skús to znova.");
+    throw new Error(`JSON parse zlyhalo. Claude vrátil: ${text.slice(0, 300)}`);
   }
 }
