@@ -3,6 +3,25 @@ import type { PortfolioSummary, Recommendation, Insurance } from "./types";
 const CLAUDE_API = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 
+/** Extracts the first balanced [...] block from a string. */
+function extractJsonArray(text: string): string {
+  const start = text.indexOf("[");
+  if (start === -1) return text;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "[") depth++;
+    else if (ch === "]") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return text.slice(start);
+}
+
 function buildPrompt(summary: PortfolioSummary): string {
   const lines = summary.assets.map(
     (a) => `- ${a.label} (${a.category}): €${a.valueEur.toFixed(2)}`
@@ -155,9 +174,8 @@ export async function fetchRecommendations(
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) text = fenceMatch[1].trim();
 
-  // 2. Extract outermost JSON array (handles trailing text after the array)
-  const arrayMatch = text.match(/(\[[\s\S]*\])/);
-  if (arrayMatch) text = arrayMatch[1];
+  // 2. Extract outermost balanced JSON array (handles trailing text)
+  text = extractJsonArray(text);
 
   try {
     return JSON.parse(text) as Recommendation[];
