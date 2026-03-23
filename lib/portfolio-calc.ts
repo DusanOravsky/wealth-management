@@ -17,8 +17,8 @@ export function calcPortfolioSummary(
 ): PortfolioSummary {
   const assets: AssetSummary[] = [];
 
-  // Commodities
-  for (const c of portfolio.commodities) {
+  // Commodities (skip sold items)
+  for (const c of portfolio.commodities.filter((c) => !c.sold)) {
     let pricePerOz = 0;
     if (c.symbol === "XAU") pricePerOz = prices.gold;
     else if (c.symbol === "XAG") pricePerOz = prices.silver;

@@ -7,8 +7,12 @@ export interface Commodity {
   unit: "oz" | "g" | "kg";
   amount: number;
   purchasePrice: number;
+  purchaseTotalEur?: number; // total EUR paid at purchase
+  purchaseDate?: string;     // YYYY-MM-DD
   currency: Currency;
   note?: string;
+  sold?: boolean;
+  soldDate?: string;         // YYYY-MM-DD
 }
 
 export interface CashEntry {
