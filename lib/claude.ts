@@ -96,6 +96,7 @@ Vráť VÝHRADNE validné JSON pole, žiadny markdown, žiadne vysvetlenia:
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1024,
+      system: "Odpovedaj VÝHRADNE po slovensky. Vráť LEN validné JSON pole bez akéhokoľvek ďalšieho textu, markdown ani vysvetlení.",
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -136,6 +137,7 @@ export async function fetchRecommendations(
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1024,
+      system: "Odpovedaj VÝHRADNE po slovensky. Vráť LEN validné JSON pole bez akéhokoľvek ďalšieho textu, markdown ani vysvetlení.",
       messages: [{ role: "user", content: prompt }],
     }),
   });
