@@ -84,6 +84,7 @@ export default function CommoditiesPage() {
   const [sellOpen, setSellOpen] = useState(false);
   const [sellItem, setSellItem] = useState<Commodity | null>(null);
   const [sellAmt, setSellAmt] = useState("");
+  const [sellPrice, setSellPrice] = useState("");
 
   const [showSold, setShowSold] = useState(false);
 
@@ -173,6 +174,7 @@ export default function CommoditiesPage() {
   function openSell(c: Commodity) {
     setSellItem(c);
     setSellAmt(String(c.amount));
+    setSellPrice("");
     setSellOpen(true);
   }
 
@@ -183,14 +185,15 @@ export default function CommoditiesPage() {
       toast.error("Neplatné množstvo.");
       return;
     }
+    const soldTotalEur = parseFloat(sellPrice) || undefined;
     let updated: Commodity[];
     if (amount >= sellItem.amount) {
       // full sell — mark as sold
       updated = commodities.map((c) =>
-        c.id === sellItem.id ? { ...c, sold: true, soldDate: today() } : c
+        c.id === sellItem.id ? { ...c, sold: true, soldDate: today(), soldTotalEur } : c
       );
     } else {
-      // partial sell — reduce amount
+      // partial sell — reduce amount, keep proportional cost
       updated = commodities.map((c) =>
         c.id === sellItem.id
           ? {
@@ -380,6 +383,17 @@ export default function CommoditiesPage() {
                             {c.amount} {c.unit} · Predané {fmtDate(c.soldDate)}
                             {c.note && ` · ${c.note}`}
                           </p>
+                          {c.soldTotalEur && c.soldTotalEur > 0 && (
+                            <p className="text-xs mt-0.5">
+                              Predané za: <strong>{fmt(c.soldTotalEur)}</strong>
+                              {c.purchaseTotalEur && c.purchaseTotalEur > 0 && (
+                                <span className={`ml-2 ${c.soldTotalEur >= c.purchaseTotalEur ? "text-green-600" : "text-red-500"}`}>
+                                  {c.soldTotalEur >= c.purchaseTotalEur ? "+" : ""}{fmt(c.soldTotalEur - c.purchaseTotalEur)}
+                                  {" "}({((c.soldTotalEur - c.purchaseTotalEur) / c.purchaseTotalEur * 100).toFixed(0)} %)
+                                </span>
+                              )}
+                            </p>
+                          )}
                         </div>
                         <div className="flex gap-1 shrink-0">
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Zrušiť predaj" onClick={() => handleUnsell(c.id)}>
@@ -478,12 +492,20 @@ export default function CommoditiesPage() {
                 <> · Aktuálna hodnota: <strong>{fmt(getValueEur(sellItem))}</strong></>
               )}
             </p>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Množstvo na predaj ({sellItem?.unit})</label>
-              <Input type="number" step="0.001" min="0.001"
-                max={sellItem?.amount}
-                value={sellAmt}
-                onChange={(e) => setSellAmt(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Množstvo na predaj ({sellItem?.unit})</label>
+                <Input type="number" step="0.001" min="0.001"
+                  max={sellItem?.amount}
+                  value={sellAmt}
+                  onChange={(e) => setSellAmt(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Predajná cena celkom (EUR)</label>
+                <Input type="number" step="1" min="0" placeholder="voliteľné"
+                  value={sellPrice}
+                  onChange={(e) => setSellPrice(e.target.value)} />
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
               Ak predáš celé množstvo, položka sa presunie do sekcie &quot;Predané&quot;. Čiastočný predaj zníži dostupné množstvo.

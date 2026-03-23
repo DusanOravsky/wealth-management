@@ -13,6 +13,7 @@ export interface Commodity {
   note?: string;
   sold?: boolean;
   soldDate?: string;         // YYYY-MM-DD
+  soldTotalEur?: number;     // total EUR received at sale
 }
 
 export interface CashEntry {
