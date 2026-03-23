@@ -155,10 +155,9 @@ export async function fetchRecommendations(
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: "Odpovedaj VÝHRADNE po slovensky. Vráť LEN validné JSON pole bez akéhokoľvek ďalšieho textu, markdown ani vysvetlení.",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 2048,
     }),
   });
 
