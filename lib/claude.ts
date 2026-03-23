@@ -109,6 +109,8 @@ Vráť VÝHRADNE validné JSON pole, žiadny markdown, žiadne vysvetlenia:
   let text: string = data.content?.[0]?.text ?? "[]";
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) text = fenceMatch[1].trim();
+  const arrayMatch = text.match(/(\[[\s\S]*\])/);
+  if (arrayMatch) text = arrayMatch[1];
 
   try {
     return JSON.parse(text) as InsuranceAlternative[];
@@ -147,9 +149,13 @@ export async function fetchRecommendations(
   const data = await res.json();
   let text: string = data.content?.[0]?.text ?? "[]";
 
-  // Strip markdown code fences if Claude wrapped the JSON (e.g. ```json ... ```)
+  // 1. Strip markdown code fences
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) text = fenceMatch[1].trim();
+
+  // 2. Extract outermost JSON array (handles trailing text after the array)
+  const arrayMatch = text.match(/(\[[\s\S]*\])/);
+  if (arrayMatch) text = arrayMatch[1];
 
   try {
     return JSON.parse(text) as Recommendation[];
