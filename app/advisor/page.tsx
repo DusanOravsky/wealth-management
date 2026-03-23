@@ -44,6 +44,7 @@ export default function AdvisorPage() {
     } catch { return []; }
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const summary = useMemo(() => {
     if (!portfolio) return null;
@@ -61,13 +62,16 @@ export default function AdvisorPage() {
     }
 
     setLoading(true);
+    setError(null);
     try {
       const recs = await fetchRecommendations(summary, claudeKey);
       setRecommendations(recs);
       localStorage.setItem("wm_recommendations", JSON.stringify(recs));
       toast.success("Odporúčania vygenerované.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Chyba pri generovaní odporúčaní.");
+      const msg = e instanceof Error ? e.message : "Chyba pri generovaní odporúčaní.";
+      setError(msg);
+      toast.error("Chyba AI poradcu – pozri detail nižšie.");
     } finally {
       setLoading(false);
     }
@@ -104,6 +108,21 @@ export default function AdvisorPage() {
                     </p>
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error detail */}
+        {error && (
+          <Card className="border-destructive">
+            <CardContent className="pt-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-destructive mb-1">Chyba Claude API</p>
+                  <p className="text-sm text-muted-foreground break-all">{error}</p>
+                </div>
               </div>
             </CardContent>
           </Card>

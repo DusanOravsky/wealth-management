@@ -140,7 +140,8 @@ export async function fetchRecommendations(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(`Claude API error ${res.status}: ${JSON.stringify(err)}`);
+    const msg = (err as { error?: { message?: string } })?.error?.message;
+    throw new Error(msg ?? `Claude API chyba ${res.status}: ${JSON.stringify(err)}`);
   }
 
   const data = await res.json();
@@ -153,6 +154,7 @@ export async function fetchRecommendations(
   try {
     return JSON.parse(text) as Recommendation[];
   } catch {
+    console.error("Claude response could not be parsed:", text);
     throw new Error("Nepodarilo sa spracovať odpoveď AI. Skús to znova.");
   }
 }
