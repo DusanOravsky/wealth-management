@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { FALLBACK_RATES, CURRENCY_SYMBOLS } from "@/lib/constants";
@@ -64,6 +65,7 @@ function fmtNum(val: number, currency = "EUR", rates: Record<string, number> = {
 }
 
 export default function DashboardPage() {
+  const [assetFilter, setAssetFilter] = React.useState("all");
   const {
     portfolioSummary,
     portfolioLoading,
@@ -236,9 +238,22 @@ export default function DashboardPage() {
                         borderRadius: "0.75rem",
                         fontSize: "12px",
                       }}
-                      formatter={(v) => fmtNum(Number(v), displayCurrency)}
+                      formatter={(v, _name, props) => {
+                        const total = pieData.reduce((s, d) => s + d.value, 0);
+                        const p = total > 0 ? ((Number(v) / total) * 100).toFixed(1) : "0";
+                        return [`${fmtNum(Number(v), displayCurrency)} (${p}%)`, props.name];
+                      }}
                     />
-                    <Legend iconType="circle" iconSize={8} />
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      formatter={(value, entry) => {
+                        const total = pieData.reduce((s, d) => s + d.value, 0);
+                        const val = (entry as { payload?: { value?: number } }).payload?.value ?? 0;
+                        const p = total > 0 ? ((val / total) * 100).toFixed(1) : "0";
+                        return `${value}  ${p} %`;
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
@@ -255,27 +270,50 @@ export default function DashboardPage() {
               <CardTitle className="text-base font-semibold">Aktíva</CardTitle>
             </CardHeader>
             <CardContent>
+              {/* Category filter chips */}
+              {summary && summary.assets.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  <button
+                    onClick={() => setAssetFilter("all")}
+                    className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${assetFilter === "all" ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"}`}
+                  >
+                    Všetky
+                  </button>
+                  {Object.keys(grouped).map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setAssetFilter(cat)}
+                      className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${assetFilter === cat ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"}`}
+                      style={assetFilter === cat ? {} : { borderColor: CATEGORY_COLORS[cat] ?? "#888", color: CATEGORY_COLORS[cat] ?? "#888" }}
+                    >
+                      {CATEGORY_LABELS[cat] ?? cat}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="space-y-2.5">
                 {summary && summary.assets.length > 0 ? (
-                  summary.assets.map((a, i) => (
-                    <div key={i} className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div
-                          className="w-2 h-8 rounded-full shrink-0"
-                          style={{ background: CATEGORY_COLORS[a.category] ?? "#888" }}
-                        />
-                        <span className="text-sm truncate">{a.label}</span>
+                  summary.assets
+                    .filter((a) => assetFilter === "all" || a.category === assetFilter)
+                    .map((a, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className="w-2 h-8 rounded-full shrink-0"
+                            style={{ background: CATEGORY_COLORS[a.category] ?? "#888" }}
+                          />
+                          <span className="text-sm truncate">{a.label}</span>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-semibold">
+                            {fmtNum(a.valueEur, displayCurrency, rates)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {pct(a.valueEur, summary.totalEur)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold">
-                          {fmtNum(a.valueEur, displayCurrency, rates)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {pct(a.valueEur, summary.totalEur)}
-                        </p>
-                      </div>
-                    </div>
-                  ))
+                    ))
                 ) : (
                   <p className="text-muted-foreground text-sm">
                     Žiadne aktíva. Pridaj ich v jednotlivých sekciách.
