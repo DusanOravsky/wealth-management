@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { Sidebar } from "./Sidebar";
+import { BottomNav } from "./BottomNav";
 import { PINScreen } from "@/components/auth/PINScreen";
 import { TrendingUp, Menu, WifiOff } from "lucide-react";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
@@ -98,11 +99,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto pb-16 md:pb-0">
           {children}
         </main>
       </div>
 
+      <BottomNav onMoreClick={() => setSidebarOpen(true)} />
       <PWAInstallBanner />
     </div>
   );

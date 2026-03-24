@@ -1,16 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
+import { useCountUp } from "@/hooks/useCountUp";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { FALLBACK_RATES, CURRENCY_SYMBOLS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -91,6 +92,7 @@ export default function DashboardPage() {
     value: Math.round(value),
     color: CATEGORY_COLORS[key] ?? "#888",
   }));
+  const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
 
   const chartData = snapshots.slice(-30).map((s) => ({
     date: s.date.slice(5),
@@ -102,6 +104,8 @@ export default function DashboardPage() {
   const snapshotGain = lastSnap - firstSnap;
   const snapshotGainPct = firstSnap > 0 ? ((snapshotGain / firstSnap) * 100).toFixed(1) : null;
 
+  const totalRaw = Math.round((summary?.totalEur ?? 0) * displayRate);
+  const animatedTotal = useCountUp(totalRaw);
   const isLoading = (portfolioLoading || pricesLoading) && !summary;
 
   if (isLoading) {
@@ -124,7 +128,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 page-enter">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -137,44 +141,36 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {/* Total balance — gradient hero card */}
-        <div
-          className="rounded-2xl p-6 text-white relative overflow-hidden"
-          style={{
-            background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 60%, #9333ea 100%)",
-            boxShadow: "0 8px 32px rgba(99,102,241,0.35)",
-          }}
-        >
-          {/* Decorative circles */}
-          <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full opacity-10"
-            style={{ background: "radial-gradient(circle, white, transparent)" }} />
-          <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full opacity-10"
-            style={{ background: "radial-gradient(circle, white, transparent)" }} />
-
-          <div className="relative">
-            <p className="text-white/65 text-sm font-medium">Celkový majetok</p>
-            <p className="text-4xl font-bold mt-1 tracking-tight">
-              {summary
-                ? `${displaySymbol}${Math.round(summary.totalEur * displayRate).toLocaleString("sk-SK")}`
-                : "—"}
+        {/* Total balance — clean hero */}
+        <div className="rounded-2xl border bg-card p-6">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Celkový majetok
+          </p>
+          <p className="mt-2 text-5xl font-normal tracking-tight leading-none tabular-nums"
+            style={{ fontFamily: "var(--font-display, inherit)" }}>
+            {summary
+              ? `${displaySymbol}${animatedTotal.toLocaleString("sk-SK")}`
+              : "—"}
+          </p>
+          {displayCurrency !== "EUR" && summary && (
+            <p className="text-muted-foreground text-sm mt-2">
+              ≈ {new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(summary.totalEur)}
             </p>
-            {displayCurrency !== "EUR" && summary && (
-              <p className="text-white/50 text-sm mt-1">
-                ≈ {new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(summary.totalEur)}
-              </p>
-            )}
-            {snapshotGainPct && chartData.length > 1 && (
-              <div className="flex items-center gap-1.5 mt-3">
+          )}
+          {snapshotGainPct && chartData.length > 1 && (
+            <div className="flex items-center gap-2 mt-3">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
+                ${snapshotGain >= 0
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                  : "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300"}`}>
                 {snapshotGain >= 0
-                  ? <TrendingUp className="w-4 h-4 text-green-300" />
-                  : <TrendingDown className="w-4 h-4 text-red-300" />}
-                <span className={`text-sm font-medium ${snapshotGain >= 0 ? "text-green-300" : "text-red-300"}`}>
-                  {snapshotGain >= 0 ? "+" : ""}{displaySymbol}{Math.abs(Math.round(snapshotGain)).toLocaleString("sk-SK")} ({snapshotGainPct}%)
-                </span>
-                <span className="text-white/40 text-xs">posledných 30 dní</span>
-              </div>
-            )}
-          </div>
+                  ? <TrendingUp className="w-3.5 h-3.5" />
+                  : <TrendingDown className="w-3.5 h-3.5" />}
+                {snapshotGain >= 0 ? "+" : ""}{displaySymbol}{Math.abs(Math.round(snapshotGain)).toLocaleString("sk-SK")} ({snapshotGainPct}%)
+              </span>
+              <span className="text-muted-foreground text-xs">posledných 30 dní</span>
+            </div>
+          )}
         </div>
 
         {/* Category cards */}
@@ -209,57 +205,49 @@ export default function DashboardPage() {
 
         {/* Charts row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Pie chart */}
+          {/* Allocation bars */}
           <Card className="shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-semibold">Alokácia</CardTitle>
             </CardHeader>
             <CardContent>
               {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={65}
-                      outerRadius={100}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} stroke="none" />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--card)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "0.75rem",
-                        fontSize: "12px",
-                      }}
-                      formatter={(v, _name, props) => {
-                        const total = pieData.reduce((s, d) => s + d.value, 0);
-                        const p = total > 0 ? ((Number(v) / total) * 100).toFixed(1) : "0";
-                        return [`${fmtNum(Number(v), displayCurrency)} (${p}%)`, props.name];
-                      }}
-                    />
-                    <Legend
-                      iconType="circle"
-                      iconSize={8}
-                      formatter={(value, entry) => {
-                        const total = pieData.reduce((s, d) => s + d.value, 0);
-                        const val = (entry as { payload?: { value?: number } }).payload?.value ?? 0;
-                        const p = total > 0 ? ((val / total) * 100).toFixed(1) : "0";
-                        return `${value}  ${p} %`;
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">
-                  Pridaj aktíva pre zobrazenie grafu
+                <div className="space-y-3">
+                  {[...pieData]
+                    .sort((a, b) => b.value - a.value)
+                    .map((item) => {
+                      const pct = pieTotal > 0 ? (item.value / pieTotal) * 100 : 0;
+                      return (
+                        <div key={item.name}>
+                          <div className="flex justify-between text-sm mb-1.5">
+                            <span className="flex items-center gap-2 text-sm">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0 inline-block"
+                                style={{ background: item.color }} />
+                              {item.name}
+                            </span>
+                            <span className="font-semibold tabular-nums text-sm">
+                              {pct.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-700"
+                              style={{ width: `${pct}%`, background: item.color }}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 text-right">
+                            {fmtNum(item.value, displayCurrency)}
+                          </p>
+                        </div>
+                      );
+                    })}
                 </div>
+              ) : (
+                <EmptyState
+                  icon={LayoutDashboard}
+                  title="Žiadne aktíva"
+                  description="Pridaj aktíva v jednotlivých sekciách pre zobrazenie alokácie."
+                />
               )}
             </CardContent>
           </Card>
@@ -315,9 +303,11 @@ export default function DashboardPage() {
                       </div>
                     ))
                 ) : (
-                  <p className="text-muted-foreground text-sm">
-                    Žiadne aktíva. Pridaj ich v jednotlivých sekciách.
-                  </p>
+                  <EmptyState
+                    icon={LayoutDashboard}
+                    title="Prázdne portfólio"
+                    description="Pridaj aktíva v jednotlivých sekciách aplikácie."
+                  />
                 )}
               </div>
             </CardContent>
@@ -331,7 +321,7 @@ export default function DashboardPage() {
               <CardTitle className="text-base font-semibold">Vývoj majetku (30 dní)</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={180}>
+              <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="totalGrad" x1="0" y1="0" x2="0" y2="1">

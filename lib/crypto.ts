@@ -34,19 +34,50 @@ async function deriveKey(pin: string, saltBase64: string): Promise<CryptoKey> {
   );
 }
 
-/** Hash PIN with SHA-256, returns hex string */
-export async function hashPIN(pin: string): Promise<string> {
+/**
+ * Hash PIN with PBKDF2 + salt (iteration-hardened, safe against brute force).
+ * Uses pin+":verify" as key material to keep derivation separate from AES key.
+ */
+export async function hashPIN(pin: string, saltBase64: string): Promise<string> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(pin + ":verify"),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: base64ToBuf(saltBase64).buffer as ArrayBuffer,
+      iterations: PBKDF2_ITERATIONS,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256
+  );
+  return Array.from(new Uint8Array(bits))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Verify PIN against a PBKDF2 hash (version 2) */
+export async function verifyPIN(pin: string, saltBase64: string, storedHash: string): Promise<boolean> {
+  const hash = await hashPIN(pin, saltBase64);
+  return hash === storedHash;
+}
+
+/**
+ * @deprecated Legacy SHA-256 PIN hash — only used for v1→v2 migration.
+ * Do NOT use for new PIN setup.
+ */
+export async function hashPINLegacy(pin: string): Promise<string> {
   const enc = new TextEncoder();
   const buf = await crypto.subtle.digest("SHA-256", enc.encode(pin));
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-/** Verify PIN against stored hash */
-export async function verifyPIN(pin: string, storedHash: string): Promise<boolean> {
-  const hash = await hashPIN(pin);
-  return hash === storedHash;
 }
 
 /** Encrypt a string with AES-256-GCM. Returns base64(iv + ciphertext) */

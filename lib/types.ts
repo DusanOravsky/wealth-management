@@ -93,6 +93,7 @@ export interface PortfolioData {
 export interface AppSettings {
   pinHash: string;
   salt: string;
+  pinHashVersion?: 1 | 2; // 1 = SHA-256 (legacy), 2 = PBKDF2 (current)
   pinAttempts?: number;
   pinLockedUntil?: number; // timestamp ms
   binanceKey?: string;

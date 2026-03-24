@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp, getDecryptedKey } from "@/context/AppContext";
-import { calcPortfolioSummary } from "@/lib/portfolio-calc";
+import { loadRecommendations, saveRecommendations } from "@/lib/store";
 import { fetchRecommendations } from "@/lib/claude";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,21 +35,12 @@ const PRIORITY_VARIANTS: Record<string, "default" | "secondary" | "destructive">
 const PRIORITY_LABELS = { high: "Vysoká", medium: "Stredná", low: "Nízka" };
 
 export default function AdvisorPage() {
-  const { portfolio, goldPrice, silverPrice, cryptoPrices, rates, pin, settings } = useApp();
-  const [recommendations, setRecommendations] = useState<Recommendation[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = localStorage.getItem("wm_recommendations");
-      return raw ? (JSON.parse(raw) as Recommendation[]) : [];
-    } catch { return []; }
-  });
+  const { portfolioSummary: summary, pin, settings } = useApp();
+  const [recommendations, setRecommendations] = useState<Recommendation[]>(() =>
+    typeof window !== "undefined" ? loadRecommendations() : []
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const summary = useMemo(() => {
-    if (!portfolio) return null;
-    return calcPortfolioSummary(portfolio, { gold: goldPrice, silver: silverPrice, crypto: cryptoPrices, rates });
-  }, [portfolio, goldPrice, silverPrice, cryptoPrices, rates]);
 
   async function getRecommendations() {
     if (!summary || !pin || !settings) { toast.error("Načítaj portfólio a prihlás sa."); return; }
@@ -66,7 +57,7 @@ export default function AdvisorPage() {
     try {
       const recs = await fetchRecommendations(summary, claudeKey);
       setRecommendations(recs);
-      localStorage.setItem("wm_recommendations", JSON.stringify(recs));
+      saveRecommendations(recs);
       toast.success("Odporúčania vygenerované.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Chyba pri generovaní odporúčaní.";
@@ -79,7 +70,7 @@ export default function AdvisorPage() {
 
   return (
     <AppShell>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 page-enter">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">AI Poradca</h1>

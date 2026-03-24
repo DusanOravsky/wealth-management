@@ -28,22 +28,42 @@ import {
   Receipt,
 } from "lucide-react";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, color: "#60a5fa" },
-  { href: "/commodities", label: "Komodity", icon: Coins, color: "#fbbf24" },
-  { href: "/cash", label: "Hotovosť", icon: Wallet, color: "#34d399" },
-  { href: "/pension", label: "II. Pilier", icon: PiggyBank, color: "#a78bfa" },
-  { href: "/bank", label: "Bankové účty", icon: Building2, color: "#38bdf8" },
-  { href: "/crypto", label: "Krypto", icon: Bitcoin, color: "#fb923c" },
-  { href: "/stocks", label: "Akcie", icon: LineChart, color: "#60a5fa" },
-  { href: "/realestate", label: "Nehnuteľnosti", icon: Home, color: "#10b981" },
-  { href: "/budget", label: "Výdavky", icon: Receipt, color: "#f472b6" },
-  { href: "/insurance", label: "Poistenie", icon: ShieldCheck, color: "#34d399" },
-  { href: "/alerts", label: "Alerty", icon: Bell, color: "#fbbf24" },
-  { href: "/planning", label: "Plánovanie", icon: BarChart3, color: "#818cf8" },
-  { href: "/goals", label: "Ciele", icon: Target, color: "#f472b6" },
-  { href: "/advisor", label: "AI Poradca", icon: Sparkles, color: "#c084fc" },
-  { href: "/settings", label: "Nastavenia", icon: Settings, color: "#94a3b8" },
+const navGroups = [
+  {
+    label: "Prehľad",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, color: "#60a5fa" },
+    ],
+  },
+  {
+    label: "Aktíva",
+    items: [
+      { href: "/commodities", label: "Komodity", icon: Coins, color: "#fbbf24" },
+      { href: "/cash", label: "Hotovosť", icon: Wallet, color: "#34d399" },
+      { href: "/pension", label: "II. Pilier", icon: PiggyBank, color: "#a78bfa" },
+      { href: "/bank", label: "Bankové účty", icon: Building2, color: "#38bdf8" },
+      { href: "/crypto", label: "Krypto", icon: Bitcoin, color: "#fb923c" },
+      { href: "/stocks", label: "Akcie", icon: LineChart, color: "#60a5fa" },
+      { href: "/realestate", label: "Nehnuteľnosti", icon: Home, color: "#10b981" },
+    ],
+  },
+  {
+    label: "Plánovanie",
+    items: [
+      { href: "/budget", label: "Výdavky", icon: Receipt, color: "#f472b6" },
+      { href: "/insurance", label: "Poistenie", icon: ShieldCheck, color: "#34d399" },
+      { href: "/alerts", label: "Alerty", icon: Bell, color: "#fbbf24" },
+      { href: "/planning", label: "Plánovanie", icon: BarChart3, color: "#818cf8" },
+      { href: "/goals", label: "Ciele", icon: Target, color: "#f472b6" },
+    ],
+  },
+  {
+    label: "Nástroje",
+    items: [
+      { href: "/advisor", label: "AI Poradca", icon: Sparkles, color: "#c084fc" },
+      { href: "/settings", label: "Nastavenia", icon: Settings, color: "#94a3b8" },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -85,34 +105,44 @@ export function Sidebar({ onClose }: SidebarProps) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ href, label, icon: Icon, color }) => {
-          const isActive = pathname === href;
-          return (
-            <Link key={href} href={href} onClick={onClose}>
-              <span
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-foreground"
-                    : "text-sidebar-foreground/50 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground/90"
-                )}
-              >
-                <Icon
-                  className="w-4 h-4 shrink-0"
-                  style={{ color: isActive ? color : undefined }}
-                />
-                {label}
-                {isActive && (
-                  <span
-                    className="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ background: color }}
-                  />
-                )}
-              </span>
-            </Link>
-          );
-        })}
+      <nav className="flex-1 p-3 overflow-y-auto space-y-4">
+        {navGroups.map((group) => (
+          <div key={group.label}>
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest"
+              style={{ color: "rgba(255,255,255,0.25)" }}>
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map(({ href, label, icon: Icon, color }) => {
+                const isActive = pathname === href;
+                return (
+                  <Link key={href} href={href} onClick={onClose}>
+                    <span
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+                        isActive
+                          ? "bg-sidebar-accent text-sidebar-foreground"
+                          : "text-sidebar-foreground/50 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground/90"
+                      )}
+                    >
+                      <Icon
+                        className="w-4 h-4 shrink-0"
+                        style={{ color: isActive ? color : undefined }}
+                      />
+                      {label}
+                      {isActive && (
+                        <span
+                          className="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
+                          style={{ background: color }}
+                        />
+                      )}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* Footer */}

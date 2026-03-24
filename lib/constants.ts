@@ -8,6 +8,9 @@ export const STORE_KEYS = {
   BUDGET_CATEGORIES: "wm_budget_categories",
   EXPENSES: "wm_expenses",
   RECURRING_EXPENSES: "wm_recurring_expenses",
+  RECOMMENDATIONS: "wm_recommendations",
+  TARGET_ALLOCATION: "wm_target_allocation",
+  FIRE_SETTINGS: "wm_fire_settings",
 } as const;
 
 export const COINGECKO_BASE = "https://api.coingecko.com/api/v3";

@@ -167,7 +167,7 @@ export default function CryptoPage() {
 
   return (
     <AppShell>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 page-enter">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Krypto</h1>

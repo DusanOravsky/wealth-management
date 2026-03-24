@@ -62,9 +62,11 @@ export function calcPortfolioSummary(
     });
   }
 
-  // Crypto
+  // Crypto — match by coinId first (unambiguous), fall back to symbol
   for (const h of portfolio.crypto) {
-    const price = prices.crypto.find((p) => p.symbol === h.symbol.toUpperCase());
+    const price = prices.crypto.find(
+      (p) => p.id === h.coinId || p.symbol === h.symbol.toUpperCase()
+    );
     const valueEur = price ? price.current_price * h.amount : 0;
     assets.push({
       label: `${h.name} (${h.symbol})`,

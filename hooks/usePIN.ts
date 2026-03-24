@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { loadSettings, saveSettings, setSession, getSession, clearSession, loadPortfolio, savePortfolio } from "@/lib/store";
-import { hashPIN, verifyPIN, generateSalt } from "@/lib/crypto";
+import { hashPIN, hashPINLegacy, verifyPIN, generateSalt } from "@/lib/crypto";
 import type { AppSettings } from "@/lib/types";
 import { PIN_MAX_ATTEMPTS, PIN_LOCKOUT_MS, AUTO_LOCK_DEFAULT_MINUTES } from "@/lib/constants";
 
@@ -44,7 +44,10 @@ export function usePIN() {
     setSettings(stored);
     const sessionPin = getSession();
     if (sessionPin) {
-      verifyPIN(sessionPin, stored.pinHash)
+      const verifySession = (stored.pinHashVersion ?? 1) === 1
+        ? hashPINLegacy(sessionPin).then((h) => h === stored.pinHash)
+        : verifyPIN(sessionPin, stored.salt, stored.pinHash);
+      verifySession
         .then((valid) => {
           if (cancelled) return;
           clearTimeout(timeout);
@@ -74,10 +77,16 @@ export function usePIN() {
     };
   }, [resetAutoLock]);
 
-  // Track user activity to reset auto-lock
+  // Track user activity to reset auto-lock (throttled to once per second)
   useEffect(() => {
     if (state !== "unlocked") return;
-    const handler = () => resetAutoLock(settings, pin);
+    let lastReset = 0;
+    const handler = () => {
+      const now = Date.now();
+      if (now - lastReset < 1000) return;
+      lastReset = now;
+      resetAutoLock(settings, pin);
+    };
     window.addEventListener("mousemove", handler, { passive: true });
     window.addEventListener("keydown", handler, { passive: true });
     window.addEventListener("touchstart", handler, { passive: true });
@@ -110,8 +119,8 @@ export function usePIN() {
     setError(null);
     try {
       const salt = generateSalt();
-      const pinHash = await hashPIN(newPin);
-      const newSettings: AppSettings = { pinHash, salt, baseCurrency: "EUR", autoLockMinutes: AUTO_LOCK_DEFAULT_MINUTES };
+      const pinHash = await hashPIN(newPin, salt);
+      const newSettings: AppSettings = { pinHash, salt, pinHashVersion: 2, baseCurrency: "EUR", autoLockMinutes: AUTO_LOCK_DEFAULT_MINUTES };
       saveSettings(newSettings);
       setSettings(newSettings);
       setSession(newPin);
@@ -135,9 +144,24 @@ export function usePIN() {
     }
 
     try {
-      const valid = await verifyPIN(enteredPin, settings.pinHash);
+      let valid = false;
+      let needsMigration = false;
+
+      if ((settings.pinHashVersion ?? 1) === 1) {
+        // Legacy SHA-256 hash — verify and migrate to PBKDF2 on success
+        const legacyHash = await hashPINLegacy(enteredPin);
+        valid = legacyHash === settings.pinHash;
+        needsMigration = valid;
+      } else {
+        valid = await verifyPIN(enteredPin, settings.salt, settings.pinHash);
+      }
+
       if (valid) {
-        const updated = { ...settings, pinAttempts: 0, pinLockedUntil: undefined };
+        let updated = { ...settings, pinAttempts: 0, pinLockedUntil: undefined };
+        if (needsMigration) {
+          // Transparently upgrade hash to PBKDF2
+          updated = { ...updated, pinHash: await hashPIN(enteredPin, settings.salt), pinHashVersion: 2 };
+        }
         saveSettings(updated);
         setSettings(updated);
         setSession(enteredPin);
@@ -163,14 +187,17 @@ export function usePIN() {
 
   const changePIN = useCallback(async (currentPin: string, newPin: string): Promise<boolean> => {
     if (!settings) return false;
-    const valid = await verifyPIN(currentPin, settings.pinHash);
+    const isLegacy = (settings.pinHashVersion ?? 1) === 1;
+    const valid = isLegacy
+      ? (await hashPINLegacy(currentPin)) === settings.pinHash
+      : await verifyPIN(currentPin, settings.salt, settings.pinHash);
     if (!valid) return false;
 
     // Re-encrypt portfolio with new PIN
     const portfolio = await loadPortfolio(currentPin, settings.salt);
     const newSalt = generateSalt();
-    const newPinHash = await hashPIN(newPin);
-    const newSettings = { ...settings, pinHash: newPinHash, salt: newSalt, pinAttempts: 0, pinLockedUntil: undefined };
+    const newPinHash = await hashPIN(newPin, newSalt);
+    const newSettings = { ...settings, pinHash: newPinHash, salt: newSalt, pinHashVersion: 2 as const, pinAttempts: 0, pinLockedUntil: undefined };
 
     if (portfolio) await savePortfolio(portfolio, newPin, newSalt);
 

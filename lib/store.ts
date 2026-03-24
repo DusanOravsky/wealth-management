@@ -1,6 +1,6 @@
 import type {
   AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal,
-  PriceAlert, Insurance, BudgetCategory, Expense, RecurringExpense,
+  PriceAlert, Insurance, BudgetCategory, Expense, RecurringExpense, Recommendation,
 } from "./types";
 import { STORE_KEYS, MAX_SNAPSHOTS } from "./constants";
 import { encrypt, decrypt } from "./crypto";
@@ -164,6 +164,18 @@ export function saveRecurringExpenses(items: RecurringExpense[]): void {
   rawSet(STORE_KEYS.RECURRING_EXPENSES, JSON.stringify(items));
 }
 
+// ---------- Recommendations (plain JSON) ----------
+
+export function loadRecommendations(): Recommendation[] {
+  const raw = rawGet(STORE_KEYS.RECOMMENDATIONS);
+  if (!raw) return [];
+  try { return JSON.parse(raw) as Recommendation[]; } catch { return []; }
+}
+
+export function saveRecommendations(items: Recommendation[]): void {
+  rawSet(STORE_KEYS.RECOMMENDATIONS, JSON.stringify(items));
+}
+
 // ---------- Session (in-memory only) ----------
 
 let _sessionPin: string | null = null;
@@ -204,6 +216,10 @@ export async function exportBackup(pin: string, salt: string): Promise<string> {
 
 export async function importBackup(json: string, pin: string, salt: string): Promise<void> {
   const data = JSON.parse(json);
+  if (!data || typeof data !== "object") throw new Error("Neplatný formát zálohy.");
+  if (!data.version || typeof data.version !== "number") throw new Error("Chýba verzia zálohy.");
+  if (data.portfolio && (typeof data.portfolio !== "object" || !Array.isArray(data.portfolio.commodities)))
+    throw new Error("Poškodené dáta portfólia.");
   if (data.portfolio) await savePortfolio(data.portfolio as PortfolioData, pin, salt);
   if (data.goals) saveGoals(data.goals as FinancialGoal[]);
   if (data.snapshots) rawSet(STORE_KEYS.SNAPSHOTS, JSON.stringify(data.snapshots));
@@ -316,5 +332,8 @@ export function wipeAll(): void {
   rawRemove(STORE_KEYS.BUDGET_CATEGORIES);
   rawRemove(STORE_KEYS.EXPENSES);
   rawRemove(STORE_KEYS.RECURRING_EXPENSES);
+  rawRemove(STORE_KEYS.RECOMMENDATIONS);
+  rawRemove(STORE_KEYS.TARGET_ALLOCATION);
+  rawRemove(STORE_KEYS.FIRE_SETTINGS);
   clearSession();
 }

@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { groupByCategory } from "@/lib/portfolio-calc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Pencil, Check, X } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
+import { STORE_KEYS } from "@/lib/constants";
 
-const TARGET_ALLOCATION: Record<string, number> = {
+const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
   cash: 5,
   bank: 10,
   pension: 10,
@@ -21,6 +24,22 @@ const TARGET_ALLOCATION: Record<string, number> = {
   stock: 25,
   realestate: 15,
 };
+
+function loadTargetAllocation(): Record<string, number> {
+  if (typeof window === "undefined") return DEFAULT_TARGET_ALLOCATION;
+  try {
+    const raw = localStorage.getItem(STORE_KEYS.TARGET_ALLOCATION);
+    return raw ? { ...DEFAULT_TARGET_ALLOCATION, ...JSON.parse(raw) } : DEFAULT_TARGET_ALLOCATION;
+  } catch { return DEFAULT_TARGET_ALLOCATION; }
+}
+
+function loadFireSettings() {
+  if (typeof window === "undefined") return { monthlyExpenses: 2000, monthlyContrib: 500, annualReturn: 7, swr: 4 };
+  try {
+    const raw = localStorage.getItem(STORE_KEYS.FIRE_SETTINGS);
+    return raw ? JSON.parse(raw) : { monthlyExpenses: 2000, monthlyContrib: 500, annualReturn: 7, swr: 4 };
+  } catch { return { monthlyExpenses: 2000, monthlyContrib: 500, annualReturn: 7, swr: 4 }; }
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   commodity: "Komodity", cash: "Hotovosť", pension: "II. Pilier", bank: "Banka", crypto: "Krypto",
@@ -64,9 +83,14 @@ export default function PlanningPage() {
   );
   const total = portfolioSummary?.totalEur ?? 0;
 
-  const chartData = Object.keys(TARGET_ALLOCATION).map((key) => {
+  // User-editable target allocation
+  const [targetAllocation, setTargetAllocation] = useState<Record<string, number>>(loadTargetAllocation);
+  const [editingAllocation, setEditingAllocation] = useState(false);
+  const [allocationDraft, setAllocationDraft] = useState<Record<string, number>>(targetAllocation);
+
+  const chartData = Object.keys(targetAllocation).map((key) => {
     const current = total > 0 ? ((grouped[key] ?? 0) / total) * 100 : 0;
-    const target = TARGET_ALLOCATION[key];
+    const target = targetAllocation[key];
     return {
       name: CATEGORY_LABELS[key] ?? key,
       key,
@@ -77,11 +101,22 @@ export default function PlanningPage() {
     };
   });
 
-  // FIRE calculator state
-  const [monthlyExpenses, setMonthlyExpenses] = useState(2000);
-  const [monthlyContrib, setMonthlyContrib] = useState(500);
-  const [annualReturn, setAnnualReturn] = useState(7);
-  const [swr, setSwr] = useState(4);
+  function saveAllocation() {
+    setTargetAllocation(allocationDraft);
+    localStorage.setItem(STORE_KEYS.TARGET_ALLOCATION, JSON.stringify(allocationDraft));
+    setEditingAllocation(false);
+  }
+
+  // FIRE calculator state — persisted
+  const fireDefaults = useMemo(() => loadFireSettings(), []);
+  const [monthlyExpenses, setMonthlyExpenses] = useState<number>(fireDefaults.monthlyExpenses);
+  const [monthlyContrib, setMonthlyContrib] = useState<number>(fireDefaults.monthlyContrib);
+  const [annualReturn, setAnnualReturn] = useState<number>(fireDefaults.annualReturn);
+  const [swr, setSwr] = useState<number>(fireDefaults.swr);
+
+  useEffect(() => {
+    localStorage.setItem(STORE_KEYS.FIRE_SETTINGS, JSON.stringify({ monthlyExpenses, monthlyContrib, annualReturn, swr }));
+  }, [monthlyExpenses, monthlyContrib, annualReturn, swr]);
 
   const fireNumber = useMemo(
     () => (monthlyExpenses * 12) / (swr / 100),
@@ -109,7 +144,7 @@ export default function PlanningPage() {
 
   return (
     <AppShell>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 page-enter">
         <div>
           <h1 className="text-2xl font-bold">Plánovanie</h1>
           <p className="text-muted-foreground text-sm mt-1">Alokácia portfólia a FIRE kalkulátor</p>
@@ -131,8 +166,54 @@ export default function PlanningPage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle className="text-base">Aktuálna vs. cieľová alokácia (%)</CardTitle></CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-base">Aktuálna vs. cieľová alokácia (%)</CardTitle>
+                {!editingAllocation ? (
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
+                    onClick={() => { setAllocationDraft({ ...targetAllocation }); setEditingAllocation(true); }}>
+                    <Pencil className="w-3 h-3" /> Upraviť ciele
+                  </Button>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Button variant="default" size="sm" className="h-7 gap-1 text-xs" onClick={saveAllocation}>
+                      <Check className="w-3 h-3" /> Uložiť
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
+                      onClick={() => setEditingAllocation(false)}>
+                      <X className="w-3 h-3" /> Zrušiť
+                    </Button>
+                  </div>
+                )}
+              </CardHeader>
               <CardContent>
+                {editingAllocation ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-2">
+                    {Object.keys(allocationDraft).map((key) => (
+                      <div key={key} className="space-y-1">
+                        <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full inline-block"
+                            style={{ background: CATEGORY_COLORS[key] ?? "#888" }} />
+                          {CATEGORY_LABELS[key] ?? key}
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number" min={0} max={100} step={1}
+                            value={allocationDraft[key]}
+                            onChange={(e) => setAllocationDraft((d) => ({ ...d, [key]: Number(e.target.value) }))}
+                            className="h-8 text-sm"
+                          />
+                          <span className="text-sm text-muted-foreground">%</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="col-span-full text-xs text-muted-foreground">
+                      Súčet: {Object.values(allocationDraft).reduce((a, b) => a + b, 0)}%
+                      {Object.values(allocationDraft).reduce((a, b) => a + b, 0) !== 100 && (
+                        <span className="text-amber-500 ml-1">(odporúča sa 100%)</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={chartData} barCategoryGap="30%">
                     <CartesianGrid strokeDasharray="3 3" />
@@ -147,6 +228,7 @@ export default function PlanningPage() {
                     <Bar dataKey="target" name="Cieľ" fill="#d1d5db" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
