@@ -818,6 +818,11 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Version footer */}
+      <p className="px-6 pb-6 text-xs text-muted-foreground">
+        Wealth Manager v{process.env.NEXT_PUBLIC_APP_VERSION}
+      </p>
+
       <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
