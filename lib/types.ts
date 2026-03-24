@@ -76,6 +76,7 @@ export interface RealEstateHolding {
   purchasePrice?: number;
   purchaseYear?: number;
   area?: number;        // m²
+  annualRent?: number;  // annual rental income in currency
   note?: string;
 }
 
@@ -131,6 +132,10 @@ export interface FinancialGoal {
   deadline?: string; // ISO date
   color?: string;
   note?: string;
+  // Progress tracking: if linkedCategory set, uses that portfolio category value.
+  // If currentAmount set, uses that. Otherwise falls back to total portfolio.
+  linkedCategory?: "commodity" | "cash" | "pension" | "bank" | "crypto" | "stock" | "realestate";
+  currentAmount?: number; // manually specified current saved amount in `currency`
 }
 
 // Price data from CoinGecko

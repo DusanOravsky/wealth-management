@@ -11,7 +11,10 @@ export function calcPortfolioSummary(
   prices: {
     gold: number;
     silver: number;
+    platinum: number;
+    palladium: number;
     crypto: { id: string; symbol: string; current_price: number }[];
+    stockPrices: Record<string, number>; // ticker → USD price
     rates: Record<string, number>;
   }
 ): PortfolioSummary {
@@ -22,6 +25,8 @@ export function calcPortfolioSummary(
     let pricePerOz = 0;
     if (c.symbol === "XAU") pricePerOz = prices.gold;
     else if (c.symbol === "XAG") pricePerOz = prices.silver;
+    else if (c.symbol === "XPT") pricePerOz = prices.platinum;
+    else if (c.symbol === "XPD") pricePerOz = prices.palladium;
 
     // Convert amount to oz if needed
     let amountOz = c.amount;
@@ -75,10 +80,14 @@ export function calcPortfolioSummary(
     });
   }
 
-  // Stocks — use currentPrice if set, otherwise purchasePrice as cost basis
+  // Stocks — use live price (USD from Yahoo Finance), then currentPrice, then purchasePrice
   for (const s of portfolio.stocks ?? []) {
-    const pricePerShare = s.currentPrice ?? s.purchasePrice;
-    const valueEur = toEur(s.amount * pricePerShare, s.currency, prices.rates);
+    const liveUsd = prices.stockPrices[s.ticker.toUpperCase()];
+    // Live price from Yahoo is in USD; convert via rates
+    const pricePerShare = liveUsd != null
+      ? toEur(liveUsd, "USD", prices.rates)
+      : toEur(s.currentPrice ?? s.purchasePrice, s.currency, prices.rates);
+    const valueEur = s.amount * pricePerShare;
     assets.push({
       label: `${s.name} (${s.ticker})`,
       valueEur,

@@ -15,17 +15,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User, Cloud, CloudDownload, QrCode, ScanLine, Smartphone, Share2 } from "lucide-react";
+import { Eye, EyeOff, Save, Trash2, Download, Upload, KeyRound, User, Cloud, CloudDownload, QrCode, ScanLine, Smartphone, Share2, Sun, Moon, Monitor } from "lucide-react";
+import { useTheme } from "next-themes";
 import { loadGIS, requestAccessToken, uploadToDrive, downloadFromDrive, getLastSync } from "@/lib/gdrive";
 import { toast } from "sonner";
 import { CURRENCIES, AUTO_LOCK_DEFAULT_MINUTES, PIN_MIN_LENGTH } from "@/lib/constants";
 import type { Currency } from "@/lib/types";
 import { exportQRPayload, importQRPayload } from "@/lib/store";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { renderSVG } from "uqr";
 
 export default function SettingsPage() {
   const { pin, settings, updateSettings, lock, changePIN, reloadPortfolio } = useApp();
+  const { theme, setTheme } = useTheme();
 
   // API keys
   const [binanceKey, setBinanceKey] = useState("");
@@ -46,6 +48,10 @@ export default function SettingsPage() {
   const [gdriveLoading, setGdriveLoading] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(() => getLastSync());
   const [googleClientId, setGoogleClientId] = useState(settings?.googleClientId ?? "");
+
+  // Confirmation dialogs
+  const [driveDownloadConfirm, setDriveDownloadConfirm] = useState(false);
+  const [wipeConfirm, setWipeConfirm] = useState(false);
 
   // QR transfer
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
@@ -170,7 +176,13 @@ export default function SettingsPage() {
     if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
     const clientId = settings.googleClientId ?? googleClientId;
     if (!clientId) { toast.error("Zadaj Google Client ID."); return; }
-    if (!confirm("Stiahnuť zálohu z Google Drive? Prepíše aktuálne dáta.")) return;
+    setDriveDownloadConfirm(true);
+  }
+
+  async function confirmGDriveDownload() {
+    if (!pin || !settings) return;
+    const clientId = settings.googleClientId ?? googleClientId;
+    setDriveDownloadConfirm(false);
     setGdriveLoading(true);
     try {
       await loadGIS();
@@ -240,7 +252,10 @@ export default function SettingsPage() {
   }
 
   function handleWipe() {
-    if (!confirm("Naozaj chceš vymazať VŠETKY dáta? Táto akcia je nezvratná.")) return;
+    setWipeConfirm(true);
+  }
+
+  function confirmWipe() {
     wipeAll();
     window.location.reload();
   }
@@ -259,9 +274,30 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Zobrazenie</CardTitle>
-            <CardDescription>Mena a automatické zamknutie</CardDescription>
+            <CardDescription>Mena, téma a automatické zamknutie</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="text-sm w-40 shrink-0">Téma</label>
+              <div className="flex gap-1">
+                {([
+                  { value: "light", label: "Svetlá", icon: Sun },
+                  { value: "system", label: "Systém", icon: Monitor },
+                  { value: "dark", label: "Tmavá", icon: Moon },
+                ] as const).map(({ value, label, icon: Icon }) => (
+                  <Button
+                    key={value}
+                    variant={theme === value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTheme(value)}
+                    className="gap-1.5"
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center gap-4">
               <label className="text-sm w-40 shrink-0">Zobrazovacia mena</label>
               <Select
@@ -759,6 +795,28 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={driveDownloadConfirm} onOpenChange={setDriveDownloadConfirm}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Stiahnuť zálohu z Drive?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Aktuálne lokálne dáta budú prepísané zálohou z Google Drive.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriveDownloadConfirm(false)}>Zrušiť</Button>
+            <Button onClick={confirmGDriveDownload}>Stiahnuť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={wipeConfirm} onOpenChange={setWipeConfirm}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Vymazať všetky dáta?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Táto akcia je <strong>nezvratná</strong>. Vymažú sa všetky dáta vrátane portfólia, PIN a API kľúčov.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWipeConfirm(false)}>Zrušiť</Button>
+            <Button variant="destructive" onClick={confirmWipe}>Vymazať všetko</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
         <DialogContent className="max-w-sm">

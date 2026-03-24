@@ -107,12 +107,11 @@ export default function PlanningPage() {
     setEditingAllocation(false);
   }
 
-  // FIRE calculator state — persisted
-  const fireDefaults = useMemo(() => loadFireSettings(), []);
-  const [monthlyExpenses, setMonthlyExpenses] = useState<number>(fireDefaults.monthlyExpenses);
-  const [monthlyContrib, setMonthlyContrib] = useState<number>(fireDefaults.monthlyContrib);
-  const [annualReturn, setAnnualReturn] = useState<number>(fireDefaults.annualReturn);
-  const [swr, setSwr] = useState<number>(fireDefaults.swr);
+  // FIRE calculator state — persisted (lazy initializers avoid SSR/client hydration mismatch)
+  const [monthlyExpenses, setMonthlyExpenses] = useState<number>(() => loadFireSettings().monthlyExpenses);
+  const [monthlyContrib, setMonthlyContrib] = useState<number>(() => loadFireSettings().monthlyContrib);
+  const [annualReturn, setAnnualReturn] = useState<number>(() => loadFireSettings().annualReturn);
+  const [swr, setSwr] = useState<number>(() => loadFireSettings().swr);
 
   useEffect(() => {
     localStorage.setItem(STORE_KEYS.FIRE_SETTINGS, JSON.stringify({ monthlyExpenses, monthlyContrib, annualReturn, swr }));

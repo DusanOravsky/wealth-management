@@ -33,6 +33,7 @@ const EMPTY: Omit<RealEstateHolding, "id"> = {
   purchasePrice: undefined,
   purchaseYear: undefined,
   area: undefined,
+  annualRent: undefined,
 };
 
 function fmt(n: number) {
@@ -49,6 +50,7 @@ export default function RealEstatePage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RealEstateHolding | null>(null);
   const [form, setForm] = useState<Omit<RealEstateHolding, "id">>(EMPTY);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   const holdings = portfolio?.realestate ?? [];
   const totalEur = holdings.reduce((sum, r) => sum + toEur(r.estimatedValue, r.currency, rates), 0);
@@ -56,7 +58,7 @@ export default function RealEstatePage() {
   function openAdd() { setEditing(null); setForm(EMPTY); setOpen(true); }
   function openEdit(r: RealEstateHolding) {
     setEditing(r);
-    setForm({ name: r.name, type: r.type, estimatedValue: r.estimatedValue, currency: r.currency, purchasePrice: r.purchasePrice, purchaseYear: r.purchaseYear, area: r.area, note: r.note });
+    setForm({ name: r.name, type: r.type, estimatedValue: r.estimatedValue, currency: r.currency, purchasePrice: r.purchasePrice, purchaseYear: r.purchaseYear, area: r.area, annualRent: r.annualRent, note: r.note });
     setOpen(true);
   }
 
@@ -71,6 +73,7 @@ export default function RealEstatePage() {
       purchasePrice: form.purchasePrice || undefined,
       purchaseYear: form.purchaseYear || undefined,
       area: form.area || undefined,
+      annualRent: form.annualRent || undefined,
     };
     const updated = editing
       ? holdings.map((r) => (r.id === editing.id ? { ...clean, id: editing.id } : r))
@@ -83,6 +86,7 @@ export default function RealEstatePage() {
   async function handleDelete(id: string) {
     if (!portfolio) return;
     await savePortfolio({ ...portfolio, realestate: holdings.filter((r) => r.id !== id) });
+    setDeleteConfirm(null);
     toast.success("Odstránené.");
   }
 
@@ -119,6 +123,9 @@ export default function RealEstatePage() {
                 : null;
               const currentYear = new Date().getFullYear();
               const yearsHeld = r.purchaseYear ? currentYear - r.purchaseYear : null;
+              const rentalYield = r.annualRent && r.estimatedValue > 0
+                ? (r.annualRent / r.estimatedValue) * 100
+                : null;
               return (
                 <Card key={r.id}>
                   <CardContent className="pt-4 flex items-center gap-4">
@@ -136,20 +143,27 @@ export default function RealEstatePage() {
                         Odhadovaná hodnota: {r.currency} {r.estimatedValue.toLocaleString("sk-SK")}
                         {yearsHeld !== null && ` · držba ${yearsHeld} r.`}
                       </p>
+                      <div className="flex gap-3 mt-0.5 flex-wrap">
+                        {rentalYield !== null && (
+                          <span className="text-xs text-green-600">nájom {rentalYield.toFixed(1)}% p.a.</span>
+                        )}
+                        {gainPct !== null && (
+                          <span className={`text-xs ${gainPct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                            zhodnotenie {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
                       {r.note && <p className="text-xs text-muted-foreground">{r.note}</p>}
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-bold">{fmt(valueEur)}</p>
-                      {gainPct !== null && (
-                        <p className={`text-xs flex items-center justify-end gap-1 ${gainPct >= 0 ? "text-green-600" : "text-red-500"}`}>
-                          {gainPct >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          {gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%
-                        </p>
+                      {r.annualRent && (
+                        <p className="text-xs text-green-600">{fmt(toEur(r.annualRent, r.currency, rates))}/rok</p>
                       )}
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(r)}><Pencil className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(r.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: r.id, name: r.name })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -250,6 +264,20 @@ export default function RealEstatePage() {
                 />
               </div>
             </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Ročný príjem z nájmu (voliteľné)</label>
+              <Input
+                type="number"
+                step="100"
+                min="0"
+                placeholder="napr. 6000"
+                value={form.annualRent ?? ""}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  setForm({ ...form, annualRent: isNaN(v) || e.target.value === "" ? undefined : v });
+                }}
+              />
+            </div>
             <Input
               placeholder="Poznámka (voliteľné)"
               value={form.note ?? ""}
@@ -259,6 +287,16 @@ export default function RealEstatePage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Zrušiť</Button>
             <Button onClick={handleSave}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteConfirm !== null} onOpenChange={(o) => { if (!o) setDeleteConfirm(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Vymazať nehnuteľnosť?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Naozaj chceš vymazať <strong>{deleteConfirm?.name}</strong>?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Zrušiť</Button>
+            <Button variant="destructive" onClick={() => deleteConfirm && handleDelete(deleteConfirm.id)}>Vymazať</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

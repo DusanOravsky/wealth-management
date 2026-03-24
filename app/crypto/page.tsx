@@ -35,6 +35,7 @@ export default function CryptoPage() {
 
   const csvRef = useRef<HTMLInputElement>(null);
   const holdings = portfolio?.crypto ?? [];
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   const totalEur = holdings.reduce((sum, h) => {
     const price = cryptoPrices.find((p) => p.symbol === h.symbol.toUpperCase());
@@ -65,6 +66,7 @@ export default function CryptoPage() {
   async function handleDelete(id: string) {
     if (!portfolio) return;
     await savePortfolio({ ...portfolio, crypto: holdings.filter((h) => h.id !== id) });
+    setDeleteConfirm(null);
     toast.success("Odstránené.");
   }
 
@@ -253,7 +255,7 @@ export default function CryptoPage() {
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(h)}><Pencil className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(h.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: h.id, name: `${h.name} (${h.symbol.toUpperCase()})` })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -302,6 +304,17 @@ export default function CryptoPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Zrušiť</Button>
             <Button onClick={handleSave}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteConfirm !== null} onOpenChange={(o) => { if (!o) setDeleteConfirm(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Vymazať krypto?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Naozaj chceš vymazať <strong>{deleteConfirm?.name}</strong>?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Zrušiť</Button>
+            <Button variant="destructive" onClick={() => deleteConfirm && handleDelete(deleteConfirm.id)}>Vymazať</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
