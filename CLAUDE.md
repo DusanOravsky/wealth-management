@@ -1,12 +1,12 @@
 # Wealth Management App — CLAUDE.md
 
 ## Project Overview
-Personal wealth management dashboard for tracking: commodities (gold/silver), cash, II. pilier (Slovak pension), bank accounts, crypto (Binance/CoinGecko), stocks, real estate, budget, insurance, goals, alerts. Includes AI-powered recommendations via Claude API.
+Personal wealth management dashboard for tracking: commodities (gold/silver/platinum/palladium), cash, II. pilier (Slovak pension), bank accounts, crypto (Binance/CoinGecko), stocks, real estate, budget, insurance, goals, alerts. Includes AI-powered recommendations via Claude API.
 
 **GitHub:** https://github.com/DusanOravsky/wealth-management
 **Live:** https://dusanoravsky.github.io/wealth-management/
 **Hosting:** GitHub Pages (static export)
-**Owner:** DusanOravsky
+**Owner:** DusanOravsky (dusan.oravsky@gmail.com)
 
 ---
 
@@ -28,6 +28,8 @@ All user data is stored in **browser localStorage**, encrypted with AES-256-GCM 
 - **CoinGecko** — free public API, no key required for basic use
 - **Binance** — user provides Read-Only API key + secret, stored encrypted; CORS blocks browser requests so manual entry is primary method
 - **Claude API** — user provides API key, stored encrypted; used for AI recommendations; requires `anthropic-dangerous-direct-browser-access: true` header
+- **metals.live** — `https://api.metals.live/v1/spot/gold,silver` — returns **array** `[{"gold":...},{"silver":...}]`
+- **Yahoo Finance** — stock prices in USD, converted via exchange rates
 
 ---
 
@@ -100,6 +102,14 @@ node scripts/gen-icons.mjs  # Regenerate PWA icons
 
 ---
 
+## Versioning
+- Version stored in `package.json` → exposed as `NEXT_PUBLIC_APP_VERSION` via `next.config.ts`
+- **Auto-bump:** `.git/hooks/pre-commit` bumps patch version on every commit (`1.0.1 → 1.0.2`)
+- Version shown in Settings page footer: `Wealth Manager v{NEXT_PUBLIC_APP_VERSION}`
+- To bump minor/major manually: edit `package.json` before committing
+
+---
+
 ## Coding Conventions
 - **TypeScript strict mode** — no `any`, no `as any`
 - Components: function components with named exports
@@ -136,20 +146,62 @@ See `lib/types.ts` for full definitions.
 - `PensionEntry`: { id, provider, value, currency, updatedAt, note? }
 - `BankAccount`: { id, bank, name, iban?, balance, currency, note? }
 - `CryptoHolding`: { id, coinId, symbol, name, amount, exchange, purchasePrice?, purchaseCurrency?, note? }
-- `StockHolding`: { id, ticker, name, amount, purchasePrice, currentPrice?, currency, exchange?, note? }
+- `StockHolding`: { id, ticker, name, amount, purchasePrice, currentPrice?, currency, exchange?, annualDividendYield?, note? }
 - `RealEstateHolding`: { id, name, type, estimatedValue, currency, purchasePrice?, purchaseYear?, area?, note? }
+- `StockWatchItem`: { id, ticker, name, targetPrice?, note? }
+- `PriceAlert`: { id, assetType: "gold"|"silver"|"platinum"|"palladium"|"crypto"|"stock", coinId?, ticker?, condition, targetPrice, triggered, createdAt }
 - `AppSettings`: { pinHash, salt, baseCurrency, displayCurrency?, autoLockMinutes?, birthYear?, retirementAge?, monthlyIncome?, binanceKey?, binanceSecret?, coingeckoKey?, claudeKey? }
 
 ---
 
-## Commodities Page
-- Per-lot tracking: each purchase is a separate entry with `purchaseDate` and `purchaseTotalEur`
-- Grouped by symbol (XAU, XAG...) with group summary (total grams, value, gain%)
-- Search filter + symbol chip filters
-- Sell dialog: full sell → marks `sold: true` + records `soldTotalEur`; partial sell → reduces amount
-- Sold items: collapsible section, excluded from portfolio total
-- Pre-seed button: imports 20 historical gold purchases (visible only when commodities is empty)
-- Historical seed data defined as `HISTORICAL_SEED` constant in `app/commodities/page.tsx`
+## Page Features Summary
+
+### Dashboard
+- Hero total value card, allocation bars, stacked area chart (toggle: total / by category)
+- Chart range: 7d / 30d / 90d / 1r
+
+### Commodities
+- Per-lot tracking with `purchaseDate` and `purchaseTotalEur`
+- Grouped by symbol (XAU, XAG, XPT, XPD, RE, OTHER)
+- Sell dialog (full/partial), sold items collapsible section
+- Pre-seed button with 20 historical gold purchases
+
+### Crypto
+- P&L summary: value / invested / gain-loss cards
+- Per-holding gain/loss with purchase price in any currency
+
+### Stocks
+- P&L + annual dividend income summary (4 cards)
+- Tabs: Pozície (holdings) | Watchlist
+- Watchlist: target price, live price, % to target
+
+### Budget
+- Tabs: Prehľad | Výdavky | Pravidelné | Kategórie
+- MoM comparison card, budget forecast banner
+- CSV import (smart column detection: SK/EN/DE headers) + CSV export
+- Emoji picker (80+ emoji) for categories
+
+### Insurance
+- CSS timeline card (horizontal bars per policy, color-coded by expiry)
+- 42-day Slovak law cancellation notice warning
+
+### Planning
+- Tabs: Alokácia | FIRE kalkulátor | II. Pilier
+- Allocation: current vs target bar chart, deviation list, rebalancing suggestions
+- Liquidity breakdown card (liquid / semi-liquid / illiquid)
+- FIRE: number, progress, profile stats (age, savings rate)
+- II. Pilier projector: 3 growth scenarios + monthly payout estimate
+
+### Alerts
+- Asset types: gold, silver, platinum, palladium, crypto, stocks
+- Browser Notification API, checked every 5 min in AppContext
+
+### Settings
+- Theme toggle (light / system / dark) via next-themes
+- Confirm dialogs (no browser confirm())
+- QR transfer (PC ↔ mobile via compressed base64url payload)
+- Export/Import backup (JSON)
+- Version shown in footer
 
 ---
 
