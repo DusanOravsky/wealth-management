@@ -86,6 +86,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [goals, setGoals] = useState<FinancialGoal[]>([]);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
 
+  // Decrypted CoinGecko API key (loaded once after unlock)
+  const [coingeckoKey, setCoingeckoKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pin || !settings) { setCoingeckoKey(null); return; }
+    loadApiKey("coingeckoKey", pin, settings).then(setCoingeckoKey).catch(() => setCoingeckoKey(null));
+  }, [pin, settings?.coingeckoKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     setGoals(loadGoals());
     setSnapshots(loadSnapshots());
@@ -118,7 +125,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loading: pricesLoading,
     error: pricesError,
     refresh: refreshPrices,
-  } = usePrices(cryptoSymbols.length > 0 ? cryptoSymbols : DEFAULT_CRYPTO_SYMBOLS, null, stockTickers);
+  } = usePrices(cryptoSymbols.length > 0 ? cryptoSymbols : DEFAULT_CRYPTO_SYMBOLS, coingeckoKey, stockTickers);
 
   // Compute portfolio summary
   const portfolioSummary = useMemo(() => {

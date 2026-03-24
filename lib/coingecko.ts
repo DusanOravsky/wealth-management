@@ -39,7 +39,7 @@ export async function fetchCryptoPrices(
 // Fallback: PAX Gold (PAXG) on CoinGecko for gold; silver stays 0.
 export async function fetchCommodityPrices(
   apiKey?: string | null,
-): Promise<{ gold: number; silver: number }> {
+): Promise<{ gold: number; silver: number; platinum: number; palladium: number }> {
   try {
     const res = await fetch(
       "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json"
@@ -49,8 +49,15 @@ export async function fetchCommodityPrices(
       const rates = data?.eur ?? {};
       const xau: number = rates.xau ?? 0;
       const xag: number = rates.xag ?? 0;
+      const xpt: number = rates.xpt ?? 0;
+      const xpd: number = rates.xpd ?? 0;
       if (xau > 0) {
-        return { gold: 1 / xau, silver: xag > 0 ? 1 / xag : 0 };
+        return {
+          gold: 1 / xau,
+          silver: xag > 0 ? 1 / xag : 0,
+          platinum: xpt > 0 ? 1 / xpt : 0,
+          palladium: xpd > 0 ? 1 / xpd : 0,
+        };
       }
     }
   } catch {
@@ -70,13 +77,38 @@ export async function fetchCommodityPrices(
       return {
         gold: data["pax-gold"]?.eur ?? 0,
         silver: 0,
+        platinum: 0,
+        palladium: 0,
       };
     }
   } catch {
     // ignore
   }
 
-  return { gold: 0, silver: 0 };
+  return { gold: 0, silver: 0, platinum: 0, palladium: 0 };
+}
+
+/**
+ * Fetch current stock prices from Yahoo Finance (free, no API key, CORS-friendly).
+ * Returns a map of ticker → price in USD. Prices are converted to portfolio currency
+ * by the caller using exchange rates.
+ */
+export async function fetchStockPrices(tickers: string[]): Promise<Record<string, number>> {
+  if (tickers.length === 0) return {};
+  const results: Record<string, number> = {};
+  await Promise.all(tickers.map(async (ticker) => {
+    try {
+      const res = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const price: number = data?.chart?.result?.[0]?.meta?.regularMarketPrice ?? 0;
+      if (price > 0) results[ticker] = price;
+    } catch { /* skip failed tickers */ }
+  }));
+  return results;
 }
 
 export async function fetchExchangeRates(): Promise<Record<string, number>> {

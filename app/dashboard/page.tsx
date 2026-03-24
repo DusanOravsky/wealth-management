@@ -148,7 +148,7 @@ export default function DashboardPage() {
   const totalRaw = Math.round((summary?.totalEur ?? 0) * displayRate);
   const animatedTotal = useCountUp(totalRaw);
   const isLoading = (portfolioLoading || pricesLoading) && !summary;
-  const upcomingPayments = React.useMemo(() => getUpcomingRecurring(7), []);
+  const [upcomingPayments] = useState(() => getUpcomingRecurring(7));
 
   if (isLoading) {
     return (

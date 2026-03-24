@@ -62,10 +62,15 @@ export async function hashPIN(pin: string, saltBase64: string): Promise<string> 
     .join("");
 }
 
-/** Verify PIN against a PBKDF2 hash (version 2) */
+/** Verify PIN against a PBKDF2 hash (version 2). Uses constant-time comparison to prevent timing attacks. */
 export async function verifyPIN(pin: string, saltBase64: string, storedHash: string): Promise<boolean> {
   const hash = await hashPIN(pin, saltBase64);
-  return hash === storedHash;
+  if (hash.length !== storedHash.length) return false;
+  let diff = 0;
+  for (let i = 0; i < hash.length; i++) {
+    diff |= hash.charCodeAt(i) ^ storedHash.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 /**

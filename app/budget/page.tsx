@@ -299,7 +299,7 @@ export default function BudgetPage() {
     a.href = url;
     a.download = `vydavky_${monthKey(year, month)}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   }
 
   function toggleRecur(id: string) {

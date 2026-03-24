@@ -23,7 +23,7 @@ export function BottomNav({ onMoreClick }: BottomNavProps) {
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-background/95 backdrop-blur-sm">
       <div className="grid grid-cols-5 h-16">
         {BOTTOM_TABS.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href;
+          const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
