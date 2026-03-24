@@ -40,6 +40,9 @@ interface AppContextValue {
   cryptoPrices: CryptoPrice[];
   goldPrice: number;
   silverPrice: number;
+  platinumPrice: number;
+  palladiumPrice: number;
+  stockPrices: Record<string, number>;
   rates: Record<string, number>;
   pricesLoading: boolean;
   pricesError: string | null;
@@ -99,15 +102,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [portfolio]
   );
 
+  const stockTickers = useMemo(
+    () => [...new Set(portfolio?.stocks?.map((s) => s.ticker.toUpperCase()) ?? [])],
+    [portfolio]
+  );
+
   const {
     crypto: cryptoPrices,
     gold: goldPrice,
     silver: silverPrice,
+    platinum: platinumPrice,
+    palladium: palladiumPrice,
+    stockPrices,
     rates,
     loading: pricesLoading,
     error: pricesError,
     refresh: refreshPrices,
-  } = usePrices(cryptoSymbols.length > 0 ? cryptoSymbols : DEFAULT_CRYPTO_SYMBOLS);
+  } = usePrices(cryptoSymbols.length > 0 ? cryptoSymbols : DEFAULT_CRYPTO_SYMBOLS, null, stockTickers);
 
   // Compute portfolio summary
   const portfolioSummary = useMemo(() => {
@@ -115,10 +126,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return calcPortfolioSummary(portfolio, {
       gold: goldPrice,
       silver: silverPrice,
+      platinum: platinumPrice,
+      palladium: palladiumPrice,
       crypto: cryptoPrices,
+      stockPrices,
       rates,
     });
-  }, [portfolio, goldPrice, silverPrice, cryptoPrices, rates]);
+  }, [portfolio, goldPrice, silverPrice, platinumPrice, palladiumPrice, cryptoPrices, stockPrices, rates]);
 
   // Save daily snapshot when summary is ready
   const snapshotDateRef = useRef<string | null>(null);
@@ -185,6 +199,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cryptoPrices,
       goldPrice,
       silverPrice,
+      platinumPrice,
+      palladiumPrice,
+      stockPrices,
       rates,
       pricesLoading,
       pricesError,
@@ -198,7 +215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setupPIN, unlock, lock, changePIN, updateSettings,
       portfolio, portfolioLoading, portfolioSummary,
       savePortfolio, reloadPortfolio,
-      cryptoPrices, goldPrice, silverPrice, rates,
+      cryptoPrices, goldPrice, silverPrice, platinumPrice, palladiumPrice, stockPrices, rates,
       pricesLoading, pricesError, refreshPrices,
       goals, saveGoalsData, snapshots,
     ]

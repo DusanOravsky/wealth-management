@@ -14,9 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import type { BudgetCategory, Expense, RecurringExpense } from "@/lib/types";
 
 // ─── Default categories ───────────────────────────────────────────────────────
@@ -157,6 +157,28 @@ export default function BudgetPage() {
     .filter((c) => catTotals[c.id] > 0 || c.monthlyLimit > 0)
     .map((c) => ({ name: `${c.icon} ${c.name}`, spent: parseFloat(catTotals[c.id].toFixed(2)), limit: c.monthlyLimit, color: c.color }));
 
+  // 6-month spending trend
+  const trendData = useMemo(() => {
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(year, month - i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const mk2 = monthKey(y, m);
+      const manualTotal = expenses
+        .filter((e) => e.date.startsWith(mk2))
+        .reduce((s, e) => s + e.amount, 0);
+      const recurTotal = getRecurringForMonth(recurring, y, m)
+        .reduce((s, e) => s + e.amount, 0);
+      months.push({
+        name: MONTH_NAMES[m].slice(0, 3),
+        total: parseFloat((manualTotal + recurTotal).toFixed(2)),
+        budget: categories.reduce((s, c) => s + c.monthlyLimit, 0),
+      });
+    }
+    return months;
+  }, [expenses, recurring, year, month, categories]);
+
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear((y) => y - 1); }
     else setMonth((m) => m - 1);
@@ -263,6 +285,23 @@ export default function BudgetPage() {
     setRecurring(updated);
     toast.success("Odstránený.");
   }
+  function exportCsv() {
+    const rows = [...allMonthExpenses]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((e) => {
+        const cat = categories.find((c) => c.id === e.categoryId);
+        return [e.date, `"${e.description.replace(/"/g, '""')}"`, e.amount.toFixed(2), e.currency, cat?.name ?? ""].join(",");
+      });
+    const csv = ["Dátum,Popis,Suma,Mena,Kategória", ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vydavky_${monthKey(year, month)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function toggleRecur(id: string) {
     const updated = recurring.map((r) => r.id === id ? { ...r, active: !r.active } : r);
     saveRecurringExpenses(updated);
@@ -368,6 +407,31 @@ export default function BudgetPage() {
               </Card>
             )}
 
+            {trendData.some((d) => d.total > 0) && (
+              <Card>
+                <CardHeader><CardTitle className="text-base">Trend výdavkov (6 mesiacov)</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={trendData} barCategoryGap="30%">
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}€`} />
+                      <Tooltip formatter={(v) => [`${v} €`, "Výdavky"]} />
+                      <ReferenceLine y={trendData[0]?.budget} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: "Limit", position: "insideTopRight", fontSize: 10, fill: "#94a3b8" }} />
+                      <Bar dataKey="total" name="Výdavky" radius={[4, 4, 0, 0]}>
+                        {trendData.map((entry, i) => (
+                          <Cell
+                            key={i}
+                            fill={entry.total > entry.budget ? "#ef4444" : i === trendData.length - 1 ? "#6366f1" : "#6366f140"}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -410,6 +474,14 @@ export default function BudgetPage() {
 
           {/* ── Expenses tab ── */}
           <TabsContent value="expenses" className="space-y-3 mt-4">
+            {allMonthExpenses.length > 0 && (
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={exportCsv}>
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  CSV export
+                </Button>
+              </div>
+            )}
             {allMonthExpenses.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-muted-foreground">

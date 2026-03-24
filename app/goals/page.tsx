@@ -3,23 +3,27 @@
 import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
+import { groupByCategory } from "@/lib/portfolio-calc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Plus, Trash2, Target } from "lucide-react";
 import { CURRENCIES, FALLBACK_RATES, CURRENCY_SYMBOLS } from "@/lib/constants";
 import type { Currency, FinancialGoal } from "@/lib/types";
 import { toast } from "sonner";
 
 const GOAL_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#f97316", "#3b82f6", "#ec4899"];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  commodity: "Komodity", cash: "Hotovosť", pension: "II. Pilier",
+  bank: "Bankové účty", crypto: "Krypto", stock: "Akcie", realestate: "Nehnuteľnosti",
+};
 
 const EMPTY_FORM = {
   name: "",
@@ -28,40 +32,56 @@ const EMPTY_FORM = {
   deadline: "",
   note: "",
   color: GOAL_COLORS[0],
+  linkedCategory: "" as FinancialGoal["linkedCategory"] | "",
+  currentAmount: "",
 };
 
 export default function GoalsPage() {
   const { goals, saveGoalsData, portfolioSummary, rates } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const grouped = portfolioSummary ? groupByCategory(portfolioSummary) : {};
+
+  function getCurrentEur(goal: FinancialGoal): number {
+    if (goal.linkedCategory) {
+      return grouped[goal.linkedCategory] ?? 0;
+    }
+    if (goal.currentAmount != null) {
+      const rate = rates[goal.currency] ?? FALLBACK_RATES[goal.currency] ?? 1;
+      return goal.currentAmount / rate; // convert to EUR
+    }
+    return portfolioSummary?.totalEur ?? 0;
+  }
 
   function getProgress(goal: FinancialGoal): number {
-    const totalEur = portfolioSummary?.totalEur ?? 0;
+    const currentEur = getCurrentEur(goal);
     const rate = rates[goal.currency] ?? FALLBACK_RATES[goal.currency] ?? 1;
-    const currentInCurrency = totalEur * rate;
+    const currentInCurrency = currentEur * rate;
     return Math.min(100, (currentInCurrency / goal.targetAmount) * 100);
   }
 
-  function getCurrentValue(goal: FinancialGoal): number {
-    const totalEur = portfolioSummary?.totalEur ?? 0;
+  function getCurrentDisplay(goal: FinancialGoal): number {
     const rate = rates[goal.currency] ?? FALLBACK_RATES[goal.currency] ?? 1;
-    return totalEur * rate;
+    return getCurrentEur(goal) * rate;
   }
 
   function handleAdd() {
     if (!form.name.trim()) { toast.error("Zadaj názov cieľa."); return; }
     if (!form.targetAmount || Number(form.targetAmount) <= 0) {
-      toast.error("Zadaj kladnú cieľovú sumu.");
-      return;
+      toast.error("Zadaj kladnú cieľovú sumu."); return;
     }
     const newGoal: FinancialGoal = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name: form.name.trim(),
       targetAmount: Number(form.targetAmount),
       currency: form.currency,
       deadline: form.deadline || undefined,
       note: form.note.trim() || undefined,
       color: form.color,
+      linkedCategory: (form.linkedCategory || undefined) as FinancialGoal["linkedCategory"],
+      currentAmount: form.currentAmount ? Number(form.currentAmount) : undefined,
     };
     saveGoalsData([...goals, newGoal]);
     setForm(EMPTY_FORM);
@@ -70,27 +90,30 @@ export default function GoalsPage() {
   }
 
   function handleDelete(id: string) {
-    if (!confirm("Vymazať tento cieľ?")) return;
     saveGoalsData(goals.filter((g) => g.id !== id));
+    setDeleteId(null);
     toast.success("Cieľ vymazaný.");
   }
 
   function daysLeft(deadline: string): number | null {
-    const d = new Date(deadline);
-    const diff = d.getTime() - Date.now();
+    const diff = new Date(deadline).getTime() - Date.now();
     if (diff < 0) return null;
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   }
 
+  function progressSource(goal: FinancialGoal): string {
+    if (goal.linkedCategory) return `z kategórie "${CATEGORY_LABELS[goal.linkedCategory]}"`;
+    if (goal.currentAmount != null) return "manuálna hodnota";
+    return "z celého portfólia";
+  }
+
   return (
     <AppShell>
-      <div className="p-6 space-y-6 max-w-2xl">
+      <div className="p-6 space-y-6 page-enter max-w-2xl">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Ciele</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Progres je počítaný z celkového portfólia
-            </p>
+            <p className="text-muted-foreground text-sm mt-1">Finančné ciele a ich progres</p>
           </div>
           <Button size="sm" onClick={() => setShowForm((v) => !v)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -132,6 +155,40 @@ export default function GoalsPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Progress source */}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Zdroj progresu</label>
+                <Select
+                  value={form.linkedCategory || "total"}
+                  onValueChange={(v) => setForm((f) => ({
+                    ...f,
+                    linkedCategory: v === "total" || v === "manual" ? "" : v as FinancialGoal["linkedCategory"],
+                    currentAmount: v === "manual" ? f.currentAmount : "",
+                  }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="total">Celé portfólio</SelectItem>
+                    <SelectItem value="manual">Manuálna hodnota</SelectItem>
+                    {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {!form.linkedCategory && (
+                <Input
+                  type="number"
+                  placeholder={`Aktuálna nasporiená suma (${form.currency}) — voliteľné`}
+                  value={form.currentAmount}
+                  onChange={(e) => setForm((f) => ({ ...f, currentAmount: e.target.value }))}
+                />
+              )}
+
               <Input
                 type="date"
                 placeholder="Termín (voliteľný)"
@@ -164,15 +221,18 @@ export default function GoalsPage() {
 
         {/* Goals list */}
         {goals.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-            <Target className="w-12 h-12 opacity-30" />
-            <p>Žiadne ciele. Klikni na &quot;Pridať cieľ&quot;.</p>
-          </div>
+          <EmptyState
+            icon={Target}
+            title="Žiadne ciele"
+            description="Nastav si finančný cieľ — FIRE, byt, dovolenka alebo čokoľvek iné."
+            action="Pridať cieľ"
+            onAction={() => setShowForm(true)}
+          />
         ) : (
           <div className="space-y-4">
             {goals.map((goal) => {
               const progress = getProgress(goal);
-              const current = getCurrentValue(goal);
+              const current = getCurrentDisplay(goal);
               const sym = CURRENCY_SYMBOLS[goal.currency] ?? goal.currency;
               const days = goal.deadline ? daysLeft(goal.deadline) : null;
               const overdue = goal.deadline && days === null;
@@ -188,6 +248,7 @@ export default function GoalsPage() {
                         />
                         <div>
                           <p className="font-medium text-sm">{goal.name}</p>
+                          <p className="text-xs text-muted-foreground">{progressSource(goal)}</p>
                           {goal.note && (
                             <p className="text-xs text-muted-foreground">{goal.note}</p>
                           )}
@@ -196,18 +257,14 @@ export default function GoalsPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         {goal.deadline && (
                           <Badge variant={overdue ? "destructive" : "secondary"} className="text-xs">
-                            {overdue
-                              ? "Presiahnutý"
-                              : days === 0
-                              ? "Dnes!"
-                              : `${days}d`}
+                            {overdue ? "Presiahnutý" : days === 0 ? "Dnes!" : `${days}d`}
                           </Badge>
                         )}
                         <Button
                           variant="ghost"
                           size="sm"
                           className="text-muted-foreground h-7 w-7 p-0"
-                          onClick={() => handleDelete(goal.id)}
+                          onClick={() => setDeleteId(goal.id)}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -226,15 +283,12 @@ export default function GoalsPage() {
                       <div className="w-full bg-muted rounded-full h-2.5">
                         <div
                           className="h-2.5 rounded-full transition-all"
-                          style={{
-                            width: `${progress}%`,
-                            background: goal.color ?? "#6366f1",
-                          }}
+                          style={{ width: `${progress}%`, background: goal.color ?? "#6366f1" }}
                         />
                       </div>
                       <p className="text-xs text-muted-foreground text-right">
                         {progress.toFixed(1)}%
-                        {progress >= 100 && " — Cieľ dosiahnutý!"}
+                        {progress >= 100 && " — Cieľ dosiahnutý! 🎉"}
                       </p>
                     </div>
                   </CardContent>
@@ -244,6 +298,18 @@ export default function GoalsPage() {
           </div>
         )}
       </div>
+      <Dialog open={deleteId !== null} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vymazať cieľ?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Táto akcia je nezvratná.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Zrušiť</Button>
+            <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Vymazať</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

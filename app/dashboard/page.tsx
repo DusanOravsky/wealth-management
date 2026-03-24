@@ -7,12 +7,15 @@ import { useApp } from "@/context/AppContext";
 import { FALLBACK_RATES, CURRENCY_SYMBOLS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard, CalendarClock } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
+import { loadRecurringExpenses } from "@/lib/store";
+import type { RecurringExpense } from "@/lib/types";
 
 const CATEGORY_COLORS: Record<string, string> = {
   commodity: "#fbbf24",
@@ -56,6 +59,37 @@ function pct(val: number, total: number) {
   return ((val / total) * 100).toFixed(1) + "%";
 }
 
+function getUpcomingRecurring(days = 7): Array<RecurringExpense & { dueDate: Date; daysLeft: number }> {
+  const recurring = loadRecurringExpenses();
+  const now = new Date();
+  const horizon = new Date(now);
+  horizon.setDate(horizon.getDate() + days);
+  const results: Array<RecurringExpense & { dueDate: Date; daysLeft: number }> = [];
+  for (const r of recurring) {
+    if (!r.active || r.type === "income") continue;
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    // monthly: check this month and next
+    const candidates: Date[] = [];
+    if (r.frequency === "monthly") {
+      candidates.push(new Date(year, month, r.dayOfMonth));
+      candidates.push(new Date(year, month + 1, r.dayOfMonth));
+    } else if (r.frequency === "annual") {
+      const rMonth = r.month ?? new Date(r.startDate).getMonth();
+      candidates.push(new Date(year, rMonth, r.dayOfMonth));
+      candidates.push(new Date(year + 1, rMonth, r.dayOfMonth));
+    }
+    for (const d of candidates) {
+      if (d >= now && d <= horizon) {
+        const daysLeft = Math.ceil((d.getTime() - now.getTime()) / 86400000);
+        results.push({ ...r, dueDate: d, daysLeft });
+        break;
+      }
+    }
+  }
+  return results.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+}
+
 function fmtNum(val: number, currency = "EUR", rates: Record<string, number> = {}) {
   const rate = rates[currency] ?? FALLBACK_RATES[currency] ?? 1;
   return new Intl.NumberFormat("sk-SK", {
@@ -65,8 +99,15 @@ function fmtNum(val: number, currency = "EUR", rates: Record<string, number> = {
   }).format(val * rate);
 }
 
+const CHART_RANGES = [
+  { label: "30d", days: 30 },
+  { label: "90d", days: 90 },
+  { label: "1r", days: 365 },
+] as const;
+
 export default function DashboardPage() {
   const [assetFilter, setAssetFilter] = React.useState("all");
+  const [chartRange, setChartRange] = useState<30 | 90 | 365>(30);
   const {
     portfolioSummary,
     portfolioLoading,
@@ -94,7 +135,7 @@ export default function DashboardPage() {
   }));
   const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
 
-  const chartData = snapshots.slice(-30).map((s) => ({
+  const chartData = snapshots.slice(-chartRange).map((s) => ({
     date: s.date.slice(5),
     total: Math.round(s.totalEur * displayRate),
   }));
@@ -107,6 +148,7 @@ export default function DashboardPage() {
   const totalRaw = Math.round((summary?.totalEur ?? 0) * displayRate);
   const animatedTotal = useCountUp(totalRaw);
   const isLoading = (portfolioLoading || pricesLoading) && !summary;
+  const upcomingPayments = React.useMemo(() => getUpcomingRecurring(7), []);
 
   if (isLoading) {
     return (
@@ -168,7 +210,7 @@ export default function DashboardPage() {
                   : <TrendingDown className="w-3.5 h-3.5" />}
                 {snapshotGain >= 0 ? "+" : ""}{displaySymbol}{Math.abs(Math.round(snapshotGain)).toLocaleString("sk-SK")} ({snapshotGainPct}%)
               </span>
-              <span className="text-muted-foreground text-xs">posledných 30 dní</span>
+              <span className="text-muted-foreground text-xs">posledných {chartRange} dní</span>
             </div>
           )}
         </div>
@@ -317,8 +359,23 @@ export default function DashboardPage() {
         {/* History chart */}
         {chartData.length > 1 && (
           <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Vývoj majetku (30 dní)</CardTitle>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base font-semibold">Vývoj majetku</CardTitle>
+              <div className="flex gap-1">
+                {CHART_RANGES.map((r) => (
+                  <button
+                    key={r.days}
+                    onClick={() => setChartRange(r.days as 30 | 90 | 365)}
+                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                      chartRange === r.days
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-input hover:bg-muted"
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
@@ -404,6 +461,38 @@ export default function DashboardPage() {
             </Card>
           ))}
         </div>
+        {/* Upcoming payments */}
+        {upcomingPayments.length > 0 && (
+          <Card className="shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <CalendarClock className="w-4 h-4 text-muted-foreground" />
+                Nadchádzajúce platby (7 dní)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {upcomingPayments.map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-2 h-8 rounded-full bg-amber-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm truncate">{r.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.dueDate.toLocaleDateString("sk-SK")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={r.daysLeft === 0 ? "destructive" : r.daysLeft <= 2 ? "secondary" : "outline"} className="text-xs">
+                      {r.daysLeft === 0 ? "Dnes" : `${r.daysLeft}d`}
+                    </Badge>
+                    <span className="text-sm font-semibold">{r.amount.toLocaleString("sk-SK")} {r.currency}</span>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </AppShell>
   );

@@ -89,6 +89,7 @@ export default function CommoditiesPage() {
   const [showSold, setShowSold] = useState(false);
   const [search, setSearch] = useState("");
   const [filterSymbol, setFilterSymbol] = useState("ALL");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   const commodities = portfolio?.commodities ?? [];
 
@@ -121,7 +122,9 @@ export default function CommoditiesPage() {
     const groupValue = items.reduce((s, c) => s + getValueEur(c), 0);
     const groupGain = groupValue - groupInvested;
     const groupGainPct = groupInvested > 0 ? (groupGain / groupInvested) * 100 : 0;
-    return { sym, items, totalGrams, groupInvested, groupValue, groupGain, groupGainPct };
+    const totalOz = totalGrams / 31.1035;
+    const avgCostPerOz = totalOz > 0 && groupInvested > 0 ? groupInvested / totalOz : 0;
+    return { sym, items, totalGrams, groupInvested, groupValue, groupGain, groupGainPct, avgCostPerOz };
   });
 
   // ── price helpers ──────────────────────────────────────────────────────────
@@ -185,6 +188,7 @@ export default function CommoditiesPage() {
   async function handleDelete(id: string) {
     if (!portfolio) return;
     await savePortfolio({ ...portfolio, commodities: commodities.filter((c) => c.id !== id) });
+    setDeleteConfirm(null);
     toast.success("Komodita odstránená.");
   }
 
@@ -359,7 +363,7 @@ export default function CommoditiesPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {groups.map(({ sym, items, totalGrams, groupInvested, groupValue, groupGain, groupGainPct }) => (
+            {groups.map(({ sym, items, totalGrams, groupInvested, groupValue, groupGain, groupGainPct, avgCostPerOz }) => (
               items.length === 0 ? null : (
                 <div key={sym} className="space-y-2">
                   {/* Group header */}
@@ -368,6 +372,9 @@ export default function CommoditiesPage() {
                       <span className="font-semibold text-sm">{COMMODITY_META[sym]?.name ?? sym}</span>
                       <Badge variant="secondary" className="text-xs">{sym}</Badge>
                       <span className="text-xs text-muted-foreground">{totalGrams.toFixed(1)} g · {items.length} položiek</span>
+                      {avgCostPerOz > 0 && (
+                        <span className="text-xs text-muted-foreground">· priem. {fmt(avgCostPerOz)}/oz</span>
+                      )}
                     </div>
                     <div className="text-right">
                       <span className="text-xs font-medium">{groupValue > 0 ? fmt(groupValue) : "—"}</span>
@@ -421,7 +428,7 @@ export default function CommoditiesPage() {
                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openSell(c)}>
                                 <Banknote className="w-3.5 h-3.5 text-amber-500" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteConfirm({ id: c.id, name: c.name })}>
                                 <Trash2 className="w-3.5 h-3.5 text-destructive" />
                               </Button>
                             </div>
@@ -477,7 +484,7 @@ export default function CommoditiesPage() {
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Zrušiť predaj" onClick={() => handleUnsell(c.id)}>
                             <TrendingUp className="w-3.5 h-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteConfirm({ id: c.id, name: c.name })}>
                             <Trash2 className="w-3.5 h-3.5 text-destructive" />
                           </Button>
                         </div>
@@ -592,6 +599,22 @@ export default function CommoditiesPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setSellOpen(false)}>Zrušiť</Button>
             <Button variant="destructive" onClick={handleSell}>Predať</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete confirmation ──────────────────────────────────────────────── */}
+      <Dialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vymazať komoditu?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Naozaj chceš vymazať <strong>{deleteConfirm?.name}</strong>? Táto akcia je nezvratná.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Zrušiť</Button>
+            <Button variant="destructive" onClick={() => deleteConfirm && handleDelete(deleteConfirm.id)}>Vymazať</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
