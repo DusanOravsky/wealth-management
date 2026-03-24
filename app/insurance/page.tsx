@@ -211,6 +211,56 @@ export default function InsurancePage() {
           </Card>
         )}
 
+        {/* Timeline */}
+        {policies.length > 0 && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Časová os poistiek</CardTitle></CardHeader>
+            <CardContent>
+              {(() => {
+                const now = Date.now();
+                const rangeStart = new Date(new Date().getFullYear(), 0, 1).getTime();
+                const rangeEnd = new Date(new Date().getFullYear() + 2, 0, 1).getTime();
+                const rangeLen = rangeEnd - rangeStart;
+                const todayPct = ((now - rangeStart) / rangeLen) * 100;
+                return (
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-xs text-muted-foreground px-1 mb-1">
+                      <span>{new Date().getFullYear()}</span>
+                      <span>{new Date().getFullYear() + 1}</span>
+                      <span>{new Date().getFullYear() + 2}</span>
+                    </div>
+                    {policies.sort((a, b) => daysUntil(a.endDate) - daysUntil(b.endDate)).map((ins) => {
+                      const start = Math.max(0, ((new Date(ins.startDate || rangeStart).getTime() - rangeStart) / rangeLen) * 100);
+                      const end = Math.min(100, ((new Date(ins.endDate).getTime() - rangeStart) / rangeLen) * 100);
+                      const status = expiryStatus(ins);
+                      const barColor = status === "expired" ? "#94a3b8" : status === "critical" ? "#ef4444" : status === "warning" ? "#f59e0b" : "#6366f1";
+                      return (
+                        <div key={ins.id}>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs w-44 truncate shrink-0">{ins.name}</span>
+                            <div className="relative flex-1 h-5 bg-muted rounded">
+                              {end > start && (
+                                <div className="absolute top-1 h-3 rounded"
+                                  style={{ left: `${start}%`, width: `${end - start}%`, background: barColor, opacity: status === "expired" ? 0.4 : 1 }} />
+                              )}
+                              <div className="absolute top-0 bottom-0 w-px bg-foreground/40"
+                                style={{ left: `${Math.min(100, Math.max(0, todayPct))}%` }} />
+                            </div>
+                            <span className="text-xs text-muted-foreground shrink-0 w-20 text-right">
+                              {new Date(ins.endDate).toLocaleDateString("sk-SK", { month: "short", year: "2-digit" })}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-muted-foreground">Zvislá čiara = dnes</p>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Policies list */}
         {policies.length === 0 ? (
           <Card>

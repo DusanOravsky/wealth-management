@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import {
   loadBudgetCategories, saveBudgetCategories,
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import type { BudgetCategory, Expense, RecurringExpense } from "@/lib/types";
@@ -156,6 +156,32 @@ export default function BudgetPage() {
   const chartData = categories
     .filter((c) => catTotals[c.id] > 0 || c.monthlyLimit > 0)
     .map((c) => ({ name: `${c.icon} ${c.name}`, spent: parseFloat(catTotals[c.id].toFixed(2)), limit: c.monthlyLimit, color: c.color }));
+
+  // Remaining spend forecast for current month
+  const remainingForecast = useMemo(() => {
+    const today = new Date();
+    const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+    if (!isCurrentMonth) return null;
+    const endOfMonth = new Date(year, month + 1, 0);
+    return recurring
+      .filter((r) => {
+        if (!r.active || r.type === "income") return false;
+        const rStart = new Date(r.startDate);
+        if (rStart > endOfMonth) return false;
+        if (r.frequency === "monthly") {
+          const due = new Date(year, month, r.dayOfMonth);
+          return due > today && due <= endOfMonth;
+        }
+        if (r.frequency === "annual") {
+          const rMonth = r.month ?? new Date(r.startDate).getMonth();
+          if (rMonth !== month) return false;
+          const due = new Date(year, month, r.dayOfMonth);
+          return due > today && due <= endOfMonth;
+        }
+        return false;
+      })
+      .reduce((s, r) => s + r.amount, 0);
+  }, [recurring, year, month]);
 
   // Month-over-month comparison per category
   const momData = useMemo(() => {
@@ -325,6 +351,43 @@ export default function BudgetPage() {
     setTimeout(() => URL.revokeObjectURL(url), 100);
   }
 
+  const csvImportRef = useRef<HTMLInputElement>(null);
+
+  async function importFromCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const text = await file.text();
+      const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) { toast.error("CSV je prázdne."); return; }
+      const header = lines[0].split(/[,;]/).map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
+      const dateIdx = header.findIndex((h) => ["date","datum","dátum","booking date"].some((k) => h.includes(k)));
+      const amountIdx = header.findIndex((h) => ["amount","suma","betrag","credit","debit","sum"].some((k) => h.includes(k)));
+      const descIdx = header.findIndex((h) => ["description","popis","note","memo","text","reference","verwendung"].some((k) => h.includes(k)));
+      if (amountIdx === -1) { toast.error("Nenašiel sa stĺpec so sumou. Skontroluj formát CSV."); return; }
+      const defaultCatId = categories[0]?.id ?? "other";
+      const imported: Expense[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(/[,;]/).map((c) => c.trim().replace(/^"|"$/g, ""));
+        const rawAmount = parseFloat((cols[amountIdx] ?? "").replace(/\s/g, "").replace(",", "."));
+        if (isNaN(rawAmount) || rawAmount <= 0) continue;
+        const dateStr = dateIdx >= 0 ? cols[dateIdx] ?? "" : "";
+        const parsedDate = dateStr ? new Date(dateStr.split(".").reverse().join("-")) : new Date(year, month, 1);
+        const isoDate = isNaN(parsedDate.getTime()) ? `${year}-${String(month + 1).padStart(2, "0")}-01` : parsedDate.toISOString().slice(0, 10);
+        const description = descIdx >= 0 ? (cols[descIdx] ?? "Import").slice(0, 80) : "Import z CSV";
+        imported.push({ id: crypto.randomUUID(), categoryId: defaultCatId, amount: rawAmount, currency: "EUR", date: isoDate, description });
+      }
+      if (imported.length === 0) { toast.error("Žiadne platné riadky. Skontroluj formát."); return; }
+      const updated = [...expenses, ...imported];
+      saveExpenses(updated);
+      setExpenses(updated);
+      toast.success(`Importovaných ${imported.length} výdavkov. Skontroluj a uprav kategórie.`);
+    } catch {
+      toast.error("Chyba pri čítaní CSV.");
+    }
+  }
+
   function toggleRecur(id: string) {
     const updated = recurring.map((r) => r.id === id ? { ...r, active: !r.active } : r);
     saveRecurringExpenses(updated);
@@ -408,6 +471,18 @@ export default function BudgetPage() {
 
           {/* ── Overview tab ── */}
           <TabsContent value="overview" className="space-y-6 mt-4">
+            {remainingForecast != null && remainingForecast > 0 && (
+              <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
+                <CardContent className="pt-3 pb-3 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0">
+                    <ChevronRight className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <p className="text-sm">
+                    Do konca mesiaca ešte prídu pravidelné výdavky <strong className="text-blue-700 dark:text-blue-300">{fmt(remainingForecast)}</strong>
+                  </p>
+                </CardContent>
+              </Card>
+            )}
             {chartData.length > 0 && (
               <Card>
                 <CardHeader><CardTitle className="text-base">Minuté vs. limit</CardTitle></CardHeader>
@@ -532,14 +607,19 @@ export default function BudgetPage() {
 
           {/* ── Expenses tab ── */}
           <TabsContent value="expenses" className="space-y-3 mt-4">
-            {allMonthExpenses.length > 0 && (
-              <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <input ref={csvImportRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importFromCSV} />
+              <Button size="sm" variant="outline" onClick={() => csvImportRef.current?.click()}>
+                <Upload className="w-3.5 h-3.5 mr-1.5" />
+                CSV import
+              </Button>
+              {allMonthExpenses.length > 0 && (
                 <Button size="sm" variant="outline" onClick={exportCsv}>
                   <Download className="w-3.5 h-3.5 mr-1.5" />
                   CSV export
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
             {allMonthExpenses.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-muted-foreground">

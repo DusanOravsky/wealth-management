@@ -51,8 +51,21 @@ const CATEGORY_COLORS: Record<string, string> = {
   stock: "#60a5fa", realestate: "#34d399",
 };
 
+const LIQUIDITY_GROUPS: { label: string; color: string; categories: string[] }[] = [
+  { label: "Likvidné (okamžite)", color: "#10b981", categories: ["cash", "bank"] },
+  { label: "Pololikvidné (dni–týždne)", color: "#f59e0b", categories: ["stock", "crypto", "commodity"] },
+  { label: "Nelikvidné (mesiace+)", color: "#6366f1", categories: ["pension", "realestate"] },
+];
+
 function fmt(n: number) {
   return new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+}
+
+function calcFV(pv: number, monthlyPMT: number, annualRatePct: number, months: number): number {
+  if (months <= 0) return pv;
+  const r = annualRatePct / 100 / 12;
+  if (r === 0) return pv + monthlyPMT * months;
+  return pv * Math.pow(1 + r, months) + monthlyPMT * (Math.pow(1 + r, months) - 1) / r;
 }
 
 function calcMonthsToFIRE(
@@ -132,6 +145,19 @@ export default function PlanningPage() {
   const targetYear = years != null ? currentYear + Math.ceil(years) : null;
   const progressPct = Math.min(100, (total / fireNumber) * 100);
 
+  // Liquidity breakdown
+  const liquidityData = useMemo(() => LIQUIDITY_GROUPS.map((g) => ({
+    ...g,
+    value: g.categories.reduce((s, c) => s + (grouped[c] ?? 0), 0),
+  })), [grouped]);
+  const liquidTotal = liquidityData.reduce((s, g) => s + g.value, 0);
+
+  // Pension projector state
+  const [pensionContrib, setPensionContrib] = useState<number>(100);
+  const [pensionReturn, setPensionReturn] = useState<number>(4);
+
+  const currentPensionEur = grouped["pension"] ?? 0;
+
   // Profile-based calculations
   const currentAge = settings?.birthYear ? currentYear - settings.birthYear : null;
   const ageAtFire = currentAge != null && years != null ? currentAge + years : null;
@@ -153,6 +179,7 @@ export default function PlanningPage() {
           <TabsList>
             <TabsTrigger value="allocation">Alokácia</TabsTrigger>
             <TabsTrigger value="fire">FIRE kalkulátor</TabsTrigger>
+            <TabsTrigger value="pension">II. Pilier</TabsTrigger>
           </TabsList>
 
           {/* ── Allocation tab ── */}
@@ -294,6 +321,50 @@ export default function PlanningPage() {
                     </p>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Liquidity breakdown */}
+            <Card>
+              <CardHeader><CardTitle className="text-base">Likvidita portfólia</CardTitle></CardHeader>
+              <CardContent>
+                {liquidTotal > 0 ? (
+                  <>
+                    {/* Stacked bar */}
+                    <div className="flex w-full h-5 rounded-full overflow-hidden mb-4">
+                      {liquidityData.map((g) => (
+                        <div
+                          key={g.label}
+                          style={{ width: `${(g.value / liquidTotal) * 100}%`, background: g.color }}
+                          title={`${g.label}: ${fmt(g.value)}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="space-y-3">
+                      {liquidityData.map((g) => (
+                        <div key={g.label}>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full shrink-0" style={{ background: g.color }} />
+                              <span className="text-sm">{g.label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">{fmt(g.value)}</span>
+                              <Badge variant="secondary" className="text-xs">
+                                {liquidTotal > 0 ? ((g.value / liquidTotal) * 100).toFixed(1) : 0}%
+                              </Badge>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground ml-5">
+                            {g.categories.map((c) => CATEGORY_LABELS[c]).join(", ")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">Žiadne dáta portfólia.</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -457,6 +528,116 @@ export default function PlanningPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ── Pension projector tab ── */}
+          <TabsContent value="pension" className="space-y-6 mt-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Projektor II. piliera</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Aktuálna hodnota</p>
+                    <p className="text-2xl font-bold">{fmt(currentPensionEur)}</p>
+                  </div>
+                  {currentAge != null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Rokov do dôchodku</p>
+                      <p className="text-2xl font-bold">
+                        {Math.max(0, (settings?.retirementAge ?? 65) - currentAge)} r.
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm text-muted-foreground">Mesačný príspevok (€)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={pensionContrib}
+                      onChange={(e) => setPensionContrib(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm text-muted-foreground">Očakávaný ročný výnos (%)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      value={pensionReturn}
+                      onChange={(e) => setPensionReturn(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Scenarios */}
+            {(() => {
+              const retAge = settings?.retirementAge ?? 65;
+              const monthsLeft = currentAge != null ? Math.max(0, (retAge - currentAge) * 12) : null;
+              if (monthsLeft == null) {
+                return (
+                  <Card>
+                    <CardContent className="py-8 text-center text-muted-foreground text-sm">
+                      Nastav rok narodenia v nastaveniach pre výpočet projekcií.
+                    </CardContent>
+                  </Card>
+                );
+              }
+              const scenarios = [
+                { label: "Konzervatívny", rate: 1, color: "text-blue-600" },
+                { label: "Stredný", rate: pensionReturn, color: "text-green-600" },
+                { label: "Optimistický", rate: Math.min(pensionReturn + 2, 12), color: "text-amber-600" },
+              ];
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {scenarios.map((sc) => {
+                      const fv = calcFV(currentPensionEur, pensionContrib, sc.rate, monthsLeft);
+                      const totalContrib = pensionContrib * monthsLeft;
+                      const gain = fv - currentPensionEur - totalContrib;
+                      return (
+                        <Card key={sc.label}>
+                          <CardContent className="pt-4">
+                            <p className="text-xs text-muted-foreground">{sc.label} ({sc.rate}%)</p>
+                            <p className={`text-2xl font-bold mt-1 ${sc.color}`}>{fmt(fv)}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              príspevky {fmt(totalContrib)} · výnos {fmt(gain)}
+                            </p>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                  <Card>
+                    <CardHeader><CardTitle className="text-base">Mesačný príjem z II. piliera pri odchode</CardTitle></CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {scenarios.map((sc) => {
+                          const fv = calcFV(currentPensionEur, pensionContrib, sc.rate, monthsLeft);
+                          // Assume 20-year payout (240 months)
+                          const monthlyPayout = fv / 240;
+                          return (
+                            <div key={sc.label} className="flex items-center justify-between p-2 rounded-md bg-muted/40">
+                              <span className="text-sm">{sc.label} ({sc.rate}%)</span>
+                              <span className={`font-semibold ${sc.color}`}>
+                                {new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(monthlyPayout)}/mes
+                              </span>
+                            </div>
+                          );
+                        })}
+                        <p className="text-xs text-muted-foreground mt-2">
+                          * Orientačný výpočet — predpokladá výplatu počas 20 rokov bez zhodnotenia pri výplate.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              );
+            })()}
           </TabsContent>
         </Tabs>
       </div>

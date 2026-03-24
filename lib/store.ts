@@ -1,6 +1,6 @@
 import type {
   AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal,
-  PriceAlert, Insurance, BudgetCategory, Expense, RecurringExpense, Recommendation,
+  PriceAlert, Insurance, BudgetCategory, Expense, RecurringExpense, Recommendation, StockWatchItem,
 } from "./types";
 import { STORE_KEYS, MAX_SNAPSHOTS } from "./constants";
 import { encrypt, decrypt } from "./crypto";
@@ -174,6 +174,18 @@ export function loadRecommendations(): Recommendation[] {
 
 export function saveRecommendations(items: Recommendation[]): void {
   rawSet(STORE_KEYS.RECOMMENDATIONS, JSON.stringify(items));
+}
+
+// ---------- Stock Watchlist ----------
+
+export function loadWatchlist(): StockWatchItem[] {
+  const raw = rawGet(STORE_KEYS.WATCHLIST);
+  if (!raw) return [];
+  try { return JSON.parse(raw) as StockWatchItem[]; } catch { return []; }
+}
+
+export function saveWatchlist(items: StockWatchItem[]): void {
+  rawSet(STORE_KEYS.WATCHLIST, JSON.stringify(items));
 }
 
 // ---------- Session (in-memory only) ----------

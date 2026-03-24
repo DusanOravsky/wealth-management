@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
-import type { StockHolding, Currency } from "@/lib/types";
+import type { StockHolding, Currency, StockWatchItem } from "@/lib/types";
 import { FALLBACK_RATES } from "@/lib/constants";
+import { loadWatchlist, saveWatchlist } from "@/lib/store";
 
 const CURRENCIES = ["EUR", "USD", "CZK", "GBP"] as const;
 
@@ -24,6 +26,14 @@ const EMPTY: Omit<StockHolding, "id"> = {
   currentPrice: undefined,
   currency: "EUR",
   exchange: "",
+  annualDividendYield: undefined,
+};
+
+const EMPTY_WATCH: Omit<StockWatchItem, "id"> = {
+  ticker: "",
+  name: "",
+  targetPrice: undefined,
+  note: "",
 };
 
 function fmt(n: number) {
@@ -41,6 +51,13 @@ export default function StocksPage() {
   const [editing, setEditing] = useState<StockHolding | null>(null);
   const [form, setForm] = useState<Omit<StockHolding, "id">>(EMPTY);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+
+  // Watchlist state
+  const [watchlist, setWatchlist] = useState<StockWatchItem[]>(() => loadWatchlist());
+  const [watchOpen, setWatchOpen] = useState(false);
+  const [watchEditing, setWatchEditing] = useState<StockWatchItem | null>(null);
+  const [watchForm, setWatchForm] = useState<Omit<StockWatchItem, "id">>(EMPTY_WATCH);
+  const [watchDeleteConfirm, setWatchDeleteConfirm] = useState<{ id: string; ticker: string } | null>(null);
 
   const holdings = portfolio?.stocks ?? [];
 
@@ -66,10 +83,16 @@ export default function StocksPage() {
   const totalGainEur = totalEur - totalCostEur;
   const totalGainPct = totalCostEur > 0 ? (totalGainEur / totalCostEur) * 100 : 0;
 
+  // Annual dividend income estimate
+  const annualDividendEur = useMemo(() => holdings.reduce((sum, s) => {
+    if (!s.annualDividendYield) return sum;
+    return sum + getValueEur(s) * (s.annualDividendYield / 100);
+  }, 0), [holdings, rates, stockPrices]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function openAdd() { setEditing(null); setForm(EMPTY); setOpen(true); }
   function openEdit(s: StockHolding) {
     setEditing(s);
-    setForm({ ticker: s.ticker, name: s.name, amount: s.amount, purchasePrice: s.purchasePrice, currentPrice: s.currentPrice, currency: s.currency, exchange: s.exchange, note: s.note });
+    setForm({ ticker: s.ticker, name: s.name, amount: s.amount, purchasePrice: s.purchasePrice, currentPrice: s.currentPrice, currency: s.currency, exchange: s.exchange, note: s.note, annualDividendYield: s.annualDividendYield });
     setOpen(true);
   }
 
@@ -79,7 +102,7 @@ export default function StocksPage() {
       return;
     }
     if (!portfolio) return;
-    const clean = { ...form, currentPrice: form.currentPrice || undefined };
+    const clean = { ...form, currentPrice: form.currentPrice || undefined, annualDividendYield: form.annualDividendYield || undefined };
     const updated = editing
       ? holdings.map((s) => (s.id === editing.id ? { ...clean, id: editing.id } : s))
       : [...holdings, { ...clean, id: crypto.randomUUID() }];
@@ -95,24 +118,47 @@ export default function StocksPage() {
     toast.success("Odstránené.");
   }
 
+  // Watchlist handlers
+  function openAddWatch() { setWatchEditing(null); setWatchForm(EMPTY_WATCH); setWatchOpen(true); }
+  function openEditWatch(w: StockWatchItem) {
+    setWatchEditing(w);
+    setWatchForm({ ticker: w.ticker, name: w.name, targetPrice: w.targetPrice, note: w.note });
+    setWatchOpen(true);
+  }
+  function handleSaveWatch() {
+    if (!watchForm.ticker || !watchForm.name) { toast.error("Vyplň ticker a názov."); return; }
+    const clean: StockWatchItem = { ...watchForm, id: watchEditing?.id ?? crypto.randomUUID() };
+    const updated = watchEditing
+      ? watchlist.map((w) => (w.id === watchEditing.id ? clean : w))
+      : [...watchlist, clean];
+    saveWatchlist(updated);
+    setWatchlist(updated);
+    setWatchOpen(false);
+    toast.success(watchEditing ? "Aktualizované." : "Pridané do watchlistu.");
+  }
+  function handleDeleteWatch(id: string) {
+    const updated = watchlist.filter((w) => w.id !== id);
+    saveWatchlist(updated);
+    setWatchlist(updated);
+    setWatchDeleteConfirm(null);
+    toast.success("Odstránené z watchlistu.");
+  }
+
   return (
     <AppShell>
       <div className="p-6 space-y-6 page-enter">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Akcie</h1>
-            <p className="text-muted-foreground text-sm mt-1">Akciové investície a ETF</p>
-          </div>
-          <Button size="sm" onClick={openAdd}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
+        <div>
+          <h1 className="text-2xl font-bold">Akcie</h1>
+          <p className="text-muted-foreground text-sm mt-1">Akciové investície a ETF</p>
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card>
             <CardContent className="pt-3 pb-3">
               <p className="text-xs text-muted-foreground">Hodnota</p>
               <p className="text-xl font-bold mt-0.5">{fmt(totalEur)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Live ceny · Yahoo Finance</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Live · Yahoo Finance</p>
             </CardContent>
           </Card>
           <Card>
@@ -134,66 +180,157 @@ export default function StocksPage() {
               )}
             </CardContent>
           </Card>
-        </div>
-
-        {holdings.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              Žiadne akcie. Pridaj prvú investíciu.
+            <CardContent className="pt-3 pb-3">
+              <p className="text-xs text-muted-foreground">Dividendy / rok</p>
+              <p className="text-xl font-bold mt-0.5">{annualDividendEur > 0 ? fmt(annualDividendEur) : "—"}</p>
+              {annualDividendEur > 0 && <p className="text-xs text-muted-foreground mt-0.5">{fmt(annualDividendEur / 12)}/mes</p>}
             </CardContent>
           </Card>
-        ) : (
-          <div className="space-y-3">
-            {holdings.map((s) => {
-              const live = getLivePriceEur(s);
-              const valueEur = getValueEur(s);
-              const costEur = getCostEur(s);
-              const gainEur = valueEur - costEur;
-              const gainPct = costEur > 0 ? (gainEur / costEur) * 100 : null;
-              const liveUsd = stockPrices[s.ticker.toUpperCase()];
+        </div>
 
-              return (
-                <Card key={s.id}>
-                  <CardContent className="pt-4 flex items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-base">{s.ticker}</span>
-                        <span className="font-medium text-sm">{s.name}</span>
-                        {s.exchange && <Badge variant="outline" className="text-xs">{s.exchange}</Badge>}
-                        <Badge variant="secondary" className="text-xs">{s.currency}</Badge>
-                        {liveUsd != null && (
-                          <Badge variant="outline" className="text-xs text-green-600 border-green-300">Live</Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {s.amount} ks
-                        {live != null
-                          ? ` · €${(live).toFixed(2)}/ks (live)`
-                          : ` · ${s.currency} ${(s.currentPrice ?? s.purchasePrice).toFixed(2)}/ks`}
-                      </p>
-                      {costEur > 0 && (
-                        <p className="text-xs text-muted-foreground">nákup {fmt(costEur)}</p>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-bold">{fmt(valueEur)}</p>
-                      {gainPct !== null && (
-                        <p className={`text-xs flex items-center justify-end gap-1 ${gainEur >= 0 ? "text-green-600" : "text-red-500"}`}>
-                          {gainEur >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          {gainEur >= 0 ? "+" : ""}{fmt(gainEur)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(s)}><Pencil className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: s.id, name: `${s.name} (${s.ticker})` })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+        <Tabs defaultValue="holdings">
+          <div className="flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="holdings">Pozície ({holdings.length})</TabsTrigger>
+              <TabsTrigger value="watchlist">Watchlist ({watchlist.length})</TabsTrigger>
+            </TabsList>
+            <div>
+              <TabsContent value="holdings" className="mt-0">
+                <Button size="sm" onClick={openAdd}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
+              </TabsContent>
+              <TabsContent value="watchlist" className="mt-0">
+                <Button size="sm" onClick={openAddWatch}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
+              </TabsContent>
+            </div>
           </div>
-        )}
+
+          {/* Holdings tab */}
+          <TabsContent value="holdings" className="mt-4">
+            {holdings.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  Žiadne akcie. Pridaj prvú investíciu.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {holdings.map((s) => {
+                  const live = getLivePriceEur(s);
+                  const valueEur = getValueEur(s);
+                  const costEur = getCostEur(s);
+                  const gainEur = valueEur - costEur;
+                  const gainPct = costEur > 0 ? (gainEur / costEur) * 100 : null;
+                  const liveUsd = stockPrices[s.ticker.toUpperCase()];
+                  const dividendEur = s.annualDividendYield ? valueEur * (s.annualDividendYield / 100) : null;
+
+                  return (
+                    <Card key={s.id}>
+                      <CardContent className="pt-4 flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-base">{s.ticker}</span>
+                            <span className="font-medium text-sm">{s.name}</span>
+                            {s.exchange && <Badge variant="outline" className="text-xs">{s.exchange}</Badge>}
+                            <Badge variant="secondary" className="text-xs">{s.currency}</Badge>
+                            {liveUsd != null && (
+                              <Badge variant="outline" className="text-xs text-green-600 border-green-300">Live</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {s.amount} ks
+                            {live != null
+                              ? ` · €${(live).toFixed(2)}/ks (live)`
+                              : ` · ${s.currency} ${(s.currentPrice ?? s.purchasePrice).toFixed(2)}/ks`}
+                          </p>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            {costEur > 0 && (
+                              <p className="text-xs text-muted-foreground">nákup {fmt(costEur)}</p>
+                            )}
+                            {dividendEur != null && (
+                              <p className="text-xs text-amber-600">div. {fmt(dividendEur)}/rok · {s.annualDividendYield}%</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold">{fmt(valueEur)}</p>
+                          {gainPct !== null && (
+                            <p className={`text-xs flex items-center justify-end gap-1 ${gainEur >= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {gainEur >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                              {gainEur >= 0 ? "+" : ""}{fmt(gainEur)} ({gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%)
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(s)}><Pencil className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: s.id, name: `${s.name} (${s.ticker})` })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Watchlist tab */}
+          <TabsContent value="watchlist" className="mt-4">
+            {watchlist.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  Watchlist je prázdny. Pridaj tituly, ktoré sleduješ.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {watchlist.map((w) => {
+                  const liveUsd = stockPrices[w.ticker.toUpperCase()];
+                  const liveEur = liveUsd != null ? toEur(liveUsd, "USD", rates) : null;
+                  const targetEur = w.targetPrice;
+                  const reachedTarget = liveEur != null && targetEur != null && liveEur >= targetEur;
+                  const pctToTarget = liveEur != null && targetEur != null
+                    ? ((targetEur - liveEur) / liveEur) * 100
+                    : null;
+
+                  return (
+                    <Card key={w.id} className={reachedTarget ? "border-green-500" : ""}>
+                      <CardContent className="pt-4 flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-base">{w.ticker}</span>
+                            <span className="font-medium text-sm">{w.name}</span>
+                            {reachedTarget && (
+                              <Badge className="text-xs bg-green-600">Dosiahnutý cieľ</Badge>
+                            )}
+                          </div>
+                          {w.note && <p className="text-xs text-muted-foreground mt-0.5">{w.note}</p>}
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            {liveEur != null && (
+                              <p className="text-sm">Live: <span className="font-semibold">€{liveEur.toFixed(2)}</span></p>
+                            )}
+                            {targetEur != null && (
+                              <p className="text-sm text-muted-foreground">Cieľ: €{targetEur.toFixed(2)}</p>
+                            )}
+                            {pctToTarget != null && !reachedTarget && (
+                              <p className="text-xs text-blue-600">{pctToTarget > 0 ? "+" : ""}{pctToTarget.toFixed(1)}% k cieľu</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {liveEur != null
+                            ? <Bell className="w-4 h-4 text-green-600" />
+                            : <BellOff className="w-4 h-4 text-muted-foreground" />}
+                          <Button variant="ghost" size="icon" onClick={() => openEditWatch(w)}><Pencil className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setWatchDeleteConfirm({ id: w.id, ticker: w.ticker })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -273,6 +410,21 @@ export default function StocksPage() {
                 />
               </div>
             </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Ročný dividendový výnos % (voliteľné)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                placeholder="napr. 3.5"
+                value={form.annualDividendYield ?? ""}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  setForm({ ...form, annualDividendYield: isNaN(v) || e.target.value === "" ? undefined : v });
+                }}
+              />
+            </div>
             <Input
               placeholder="Poznámka (voliteľné)"
               value={form.note ?? ""}
@@ -293,6 +445,69 @@ export default function StocksPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Zrušiť</Button>
             <Button variant="destructive" onClick={() => deleteConfirm && handleDelete(deleteConfirm.id)}>Vymazať</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Watchlist dialog */}
+      <Dialog open={watchOpen} onOpenChange={setWatchOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{watchEditing ? "Upraviť watchlist" : "Pridať do watchlistu"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Ticker</label>
+                <Input
+                  placeholder="AAPL"
+                  value={watchForm.ticker}
+                  onChange={(e) => setWatchForm({ ...watchForm, ticker: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Cieľová cena (€, voliteľné)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="napr. 200"
+                  value={watchForm.targetPrice ?? ""}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setWatchForm({ ...watchForm, targetPrice: isNaN(v) || e.target.value === "" ? undefined : v });
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Názov</label>
+              <Input
+                placeholder="Apple Inc."
+                value={watchForm.name}
+                onChange={(e) => setWatchForm({ ...watchForm, name: e.target.value })}
+              />
+            </div>
+            <Input
+              placeholder="Poznámka (voliteľné)"
+              value={watchForm.note ?? ""}
+              onChange={(e) => setWatchForm({ ...watchForm, note: e.target.value })}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWatchOpen(false)}>Zrušiť</Button>
+            <Button onClick={handleSaveWatch}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={watchDeleteConfirm !== null} onOpenChange={(o) => { if (!o) setWatchDeleteConfirm(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Vymazať z watchlistu?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Naozaj chceš odstrániť <strong>{watchDeleteConfirm?.ticker}</strong> z watchlistu?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWatchDeleteConfirm(null)}>Zrušiť</Button>
+            <Button variant="destructive" onClick={() => watchDeleteConfirm && handleDeleteWatch(watchDeleteConfirm.id)}>Vymazať</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

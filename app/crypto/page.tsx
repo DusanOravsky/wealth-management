@@ -11,11 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
-import type { CryptoHolding } from "@/lib/types";
+import type { CryptoHolding, Currency } from "@/lib/types";
+import { FALLBACK_RATES } from "@/lib/constants";
 import { fetchBinanceBalances } from "@/lib/binance";
 import { getDecryptedKey } from "@/context/AppContext";
 
-const EMPTY: Omit<CryptoHolding, "id"> = { coinId: "", symbol: "", name: "", amount: 0, exchange: "binance" };
+const EMPTY: Omit<CryptoHolding, "id"> = { coinId: "", symbol: "", name: "", amount: 0, exchange: "binance", purchasePrice: undefined, purchaseCurrency: "EUR" };
+
+function toEur(amount: number, currency: string, rates: Record<string, number>): number {
+  const rate = rates[currency] ?? FALLBACK_RATES[currency] ?? 1;
+  return amount / rate;
+}
 
 function fmt(n: number) {
   return new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);
@@ -27,7 +33,7 @@ function fmtPct(n: number) {
 }
 
 export default function CryptoPage() {
-  const { portfolio, savePortfolio, cryptoPrices, pricesLoading, refreshPrices, pin, settings } = useApp();
+  const { portfolio, savePortfolio, cryptoPrices, pricesLoading, refreshPrices, pin, settings, rates } = useApp();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CryptoHolding | null>(null);
   const [form, setForm] = useState<Omit<CryptoHolding, "id">>(EMPTY);
@@ -45,9 +51,16 @@ export default function CryptoPage() {
   function openAdd() { setEditing(null); setForm(EMPTY); setOpen(true); }
   function openEdit(h: CryptoHolding) {
     setEditing(h);
-    setForm({ coinId: h.coinId, symbol: h.symbol, name: h.name, amount: h.amount, exchange: h.exchange, note: h.note });
+    setForm({ coinId: h.coinId, symbol: h.symbol, name: h.name, amount: h.amount, exchange: h.exchange, note: h.note, purchasePrice: h.purchasePrice, purchaseCurrency: h.purchaseCurrency ?? "EUR" });
     setOpen(true);
   }
+
+  const totalCostEur = holdings.reduce((sum, h) => {
+    if (!h.purchasePrice) return sum;
+    return sum + toEur(h.purchasePrice * h.amount, h.purchaseCurrency ?? "EUR", rates);
+  }, 0);
+  const totalGainEur = totalCostEur > 0 ? totalEur - totalCostEur : null;
+  const totalGainPct = totalCostEur > 0 && totalGainEur != null ? (totalGainEur / totalCostEur) * 100 : null;
 
   async function handleSave() {
     if (!form.coinId || !form.symbol || form.amount <= 0) {
@@ -189,12 +202,37 @@ export default function CryptoPage() {
           </div>
         </div>
 
-        <Card className="bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
-          <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">Celková hodnota (EUR)</p>
-            <p className="text-3xl font-bold mt-1 text-orange-700 dark:text-orange-400">{fmt(totalEur)}</p>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card className="bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800 sm:col-span-1">
+            <CardContent className="pt-4">
+              <p className="text-sm text-muted-foreground">Celková hodnota (EUR)</p>
+              <p className="text-3xl font-bold mt-1 text-orange-700 dark:text-orange-400">{fmt(totalEur)}</p>
+            </CardContent>
+          </Card>
+          {totalCostEur > 0 && (
+            <>
+              <Card>
+                <CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Investované</p>
+                  <p className="text-xl font-bold mt-1">{fmt(totalCostEur)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <p className="text-xs text-muted-foreground">Zisk / Strata</p>
+                  <p className={`text-xl font-bold mt-1 ${(totalGainEur ?? 0) >= 0 ? "text-green-600" : "text-red-500"}`}>
+                    {totalGainEur != null ? `${totalGainEur >= 0 ? "+" : ""}${fmt(totalGainEur)}` : "—"}
+                  </p>
+                  {totalGainPct != null && (
+                    <p className={`text-xs mt-0.5 ${totalGainPct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                      {totalGainPct >= 0 ? "+" : ""}{totalGainPct.toFixed(1)}%
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
 
         {/* Live market prices */}
         {cryptoPrices.length > 0 && (
@@ -230,6 +268,9 @@ export default function CryptoPage() {
               const price = cryptoPrices.find((p) => p.symbol === h.symbol.toUpperCase());
               const valueEur = price ? price.current_price * h.amount : 0;
               const change = price?.price_change_percentage_24h ?? 0;
+              const costEur = h.purchasePrice ? toEur(h.purchasePrice * h.amount, h.purchaseCurrency ?? "EUR", rates) : null;
+              const gainEur = costEur != null && valueEur > 0 ? valueEur - costEur : null;
+              const gainPct = costEur != null && costEur > 0 && gainEur != null ? (gainEur / costEur) * 100 : null;
               return (
                 <Card key={h.id}>
                   <CardContent className="pt-4 flex items-center justify-between gap-4">
@@ -250,6 +291,11 @@ export default function CryptoPage() {
                         <p className={`text-xs flex items-center justify-end gap-1 ${change >= 0 ? "text-green-600" : "text-red-500"}`}>
                           {change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                           {fmtPct(change)} 24h
+                        </p>
+                      )}
+                      {gainEur != null && (
+                        <p className={`text-xs mt-0.5 ${gainEur >= 0 ? "text-green-600" : "text-red-500"}`}>
+                          {gainEur >= 0 ? "+" : ""}{fmt(gainEur)} ({gainPct != null ? `${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}%` : ""})
                         </p>
                       )}
                     </div>
@@ -295,6 +341,23 @@ export default function CryptoPage() {
                   <SelectContent>
                     <SelectItem value="binance">Binance</SelectItem>
                     <SelectItem value="other">Iná</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Nákupná cena/ks (voliteľné)</label>
+                <Input type="number" step="0.01" min="0" placeholder="napr. 45000"
+                  value={form.purchasePrice ?? ""}
+                  onChange={(e) => { const v = parseFloat(e.target.value); setForm({ ...form, purchasePrice: isNaN(v) || e.target.value === "" ? undefined : v }); }} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Mena nákupu</label>
+                <Select value={form.purchaseCurrency ?? "EUR"} onValueChange={(v) => setForm({ ...form, purchaseCurrency: (v ?? "EUR") as Currency })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["EUR", "USD", "CZK", "GBP"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

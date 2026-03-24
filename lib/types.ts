@@ -64,6 +64,15 @@ export interface StockHolding {
   currentPrice?: number; // manually updated current price
   currency: Currency;
   exchange?: string;    // e.g. "NASDAQ", "Bratislavská burza"
+  annualDividendYield?: number; // % e.g. 2.5 for 2.5%
+  note?: string;
+}
+
+export interface StockWatchItem {
+  id: string;
+  ticker: string;
+  name: string;
+  targetPrice?: number; // EUR — alert when price drops to this (buy signal)
   note?: string;
 }
 
