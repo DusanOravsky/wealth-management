@@ -168,6 +168,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const found = cryptoPrices.find((p) => p.id === alert.coinId);
         currentPrice = found?.current_price ?? 0;
       }
+      if (alert.assetType === "platinum") currentPrice = platinumPrice;
+      else if (alert.assetType === "palladium") currentPrice = palladiumPrice;
+      else if (alert.assetType === "stock" && alert.ticker) {
+        const priceUsd = stockPrices[alert.ticker.toUpperCase()];
+        if (priceUsd) currentPrice = priceUsd / (rates["USD"] ?? 1.09);
+      }
       if (currentPrice === 0) continue;
       const hit = alert.condition === "above"
         ? currentPrice >= alert.targetPrice
@@ -184,7 +190,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
     if (changed) saveAlerts(alerts);
-  }, [goldPrice, silverPrice, cryptoPrices, pricesLoading]);
+  }, [goldPrice, silverPrice, platinumPrice, palladiumPrice, cryptoPrices, stockPrices, rates, pricesLoading]);
 
   const value: AppContextValue = useMemo(
     () => ({

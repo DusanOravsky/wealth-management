@@ -168,7 +168,14 @@ export default function GoalsPage() {
                   }))}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>
+                      {(() => {
+                        const v: string = form.linkedCategory || "total";
+                        if (v === "total") return "Celé portfólio";
+                        if (v === "manual") return "Manuálna hodnota";
+                        return CATEGORY_LABELS[v] ?? v;
+                      })()}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="total">Celé portfólio</SelectItem>

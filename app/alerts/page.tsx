@@ -17,6 +17,7 @@ import type { PriceAlert } from "@/lib/types";
 const EMPTY_FORM = {
   assetType: "gold" as PriceAlert["assetType"],
   coinId: "",
+  ticker: "",
   label: "Zlato",
   condition: "above" as PriceAlert["condition"],
   targetPrice: 0,
@@ -27,7 +28,7 @@ function fmt(n: number) {
 }
 
 export default function AlertsPage() {
-  const { goldPrice, silverPrice, cryptoPrices } = useApp();
+  const { goldPrice, silverPrice, platinumPrice, palladiumPrice, cryptoPrices, stockPrices, rates } = useApp();
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -52,10 +53,13 @@ export default function AlertsPage() {
   }
 
   function handleAssetTypeChange(type: PriceAlert["assetType"]) {
-    const defaults: Record<PriceAlert["assetType"], { label: string; coinId: string }> = {
-      gold: { label: "Zlato (XAU)", coinId: "" },
-      silver: { label: "Striebro (XAG)", coinId: "" },
-      crypto: { label: "", coinId: "" },
+    const defaults: Record<PriceAlert["assetType"], { label: string; coinId: string; ticker: string }> = {
+      gold:      { label: "Zlato (XAU)",      coinId: "", ticker: "" },
+      silver:    { label: "Striebro (XAG)",   coinId: "", ticker: "" },
+      platinum:  { label: "Platina (XPT)",    coinId: "", ticker: "" },
+      palladium: { label: "Paládium (XPD)",   coinId: "", ticker: "" },
+      stock:     { label: "",                 coinId: "", ticker: "" },
+      crypto:    { label: "",                 coinId: "", ticker: "" },
     };
     setForm({ ...form, assetType: type, ...defaults[type] });
   }
@@ -66,21 +70,29 @@ export default function AlertsPage() {
     setForm({ ...form, coinId: id, label: coin ? `${coin.name} (${coin.symbol})` : id });
   }
 
-  function currentPrice(type: PriceAlert["assetType"], coinId?: string): number {
+  function currentPrice(type: PriceAlert["assetType"], coinId?: string, ticker?: string): number {
     if (type === "gold") return goldPrice;
     if (type === "silver") return silverPrice;
+    if (type === "platinum") return platinumPrice;
+    if (type === "palladium") return palladiumPrice;
     if (type === "crypto" && coinId) return cryptoPrices.find((p) => p.id === coinId)?.current_price ?? 0;
+    if (type === "stock" && ticker) {
+      const usd = stockPrices[ticker.toUpperCase()];
+      return usd ? usd / (rates["USD"] ?? 1.09) : 0;
+    }
     return 0;
   }
 
   function handleAdd() {
     if (form.targetPrice <= 0) { toast.error("Zadaj cieľovú cenu."); return; }
     if (form.assetType === "crypto" && !form.coinId) { toast.error("Vyber kryptomenu."); return; }
+    if (form.assetType === "stock" && !form.ticker) { toast.error("Zadaj ticker akcie."); return; }
     const alert: PriceAlert = {
       id: crypto.randomUUID(),
       assetType: form.assetType,
       coinId: form.coinId || undefined,
-      label: form.label,
+      ticker: form.ticker || undefined,
+      label: form.label || form.ticker || form.coinId,
       condition: form.condition,
       targetPrice: form.targetPrice,
       triggered: false,
@@ -143,16 +155,18 @@ export default function AlertsPage() {
           <CardHeader><CardTitle className="text-base">Aktuálne ceny</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Zlato (XAU)</p>
-                <p className="font-bold">{goldPrice > 0 ? fmt(goldPrice) : "—"}</p>
-                <p className="text-xs text-muted-foreground">/ oz</p>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Striebro (XAG)</p>
-                <p className="font-bold">{silverPrice > 0 ? fmt(silverPrice) : "—"}</p>
-                <p className="text-xs text-muted-foreground">/ oz</p>
-              </div>
+              {[
+                { label: "Zlato (XAU)", price: goldPrice },
+                { label: "Striebro (XAG)", price: silverPrice },
+                { label: "Platina (XPT)", price: platinumPrice },
+                { label: "Paládium (XPD)", price: palladiumPrice },
+              ].map(({ label, price }) => (
+                <div key={label} className="p-3 rounded-lg bg-muted/50">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="font-bold">{price > 0 ? fmt(price) : "—"}</p>
+                  <p className="text-xs text-muted-foreground">/ oz</p>
+                </div>
+              ))}
               {cryptoPrices.slice(0, 4).map((p) => (
                 <div key={p.id} className="p-3 rounded-lg bg-muted/50">
                   <p className="text-xs text-muted-foreground">{p.name}</p>
@@ -172,7 +186,7 @@ export default function AlertsPage() {
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Bell className="w-4 h-4" /> Aktívne alerty ({active.length})</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {active.map((a) => {
-                const cur = currentPrice(a.assetType, a.coinId);
+                const cur = currentPrice(a.assetType, a.coinId, a.ticker);
                 const priceDiff = a.condition === "above" ? a.targetPrice - cur : cur - a.targetPrice;
                 const diffPct = cur > 0 ? (priceDiff / cur) * 100 : null;
                 return (
@@ -191,6 +205,7 @@ export default function AlertsPage() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <Badge variant="secondary">{cur > 0 ? fmt(cur) : "—"}</Badge>
+
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(a.id)}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
@@ -252,10 +267,24 @@ export default function AlertsPage() {
                 <SelectContent>
                   <SelectItem value="gold">Zlato (XAU)</SelectItem>
                   <SelectItem value="silver">Striebro (XAG)</SelectItem>
+                  <SelectItem value="platinum">Platina (XPT)</SelectItem>
+                  <SelectItem value="palladium">Paládium (XPD)</SelectItem>
+                  <SelectItem value="stock">Akcia / ETF</SelectItem>
                   <SelectItem value="crypto">Kryptomena</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {form.assetType === "stock" && (
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Ticker (napr. AAPL, MSFT)</label>
+                <Input
+                  placeholder="AAPL"
+                  value={form.ticker}
+                  onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase(), label: e.target.value.toUpperCase() })}
+                />
+              </div>
+            )}
 
             {form.assetType === "crypto" && (
               <div>
@@ -293,9 +322,9 @@ export default function AlertsPage() {
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">
                 Cieľová cena (EUR)
-                {currentPrice(form.assetType, form.coinId) > 0 && (
+                {currentPrice(form.assetType, form.coinId, form.ticker) > 0 && (
                   <span className="ml-2 text-muted-foreground">
-                    · aktuálna: {fmt(currentPrice(form.assetType, form.coinId))}
+                    · aktuálna: {fmt(currentPrice(form.assetType, form.coinId, form.ticker))}
                   </span>
                 )}
               </label>

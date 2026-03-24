@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import type { BudgetCategory, Expense, RecurringExpense } from "@/lib/types";
@@ -156,6 +156,29 @@ export default function BudgetPage() {
   const chartData = categories
     .filter((c) => catTotals[c.id] > 0 || c.monthlyLimit > 0)
     .map((c) => ({ name: `${c.icon} ${c.name}`, spent: parseFloat(catTotals[c.id].toFixed(2)), limit: c.monthlyLimit, color: c.color }));
+
+  // Month-over-month comparison per category
+  const momData = useMemo(() => {
+    const prevD = new Date(year, month - 1, 1);
+    const prevY = prevD.getFullYear();
+    const prevM = prevD.getMonth();
+    const prevMk = monthKey(prevY, prevM);
+    return categories
+      .map((cat) => {
+        const thisSpent = catTotals[cat.id] ?? 0;
+        const prevManual = expenses
+          .filter((e) => e.date.startsWith(prevMk) && e.categoryId === cat.id)
+          .reduce((s, e) => s + e.amount, 0);
+        const prevRecurring = getRecurringForMonth(recurring, prevY, prevM)
+          .filter((e) => e.categoryId === cat.id)
+          .reduce((s, e) => s + e.amount, 0);
+        const prevSpent = prevManual + prevRecurring;
+        const delta = thisSpent - prevSpent;
+        const deltaPct = prevSpent > 0 ? (delta / prevSpent) * 100 : null;
+        return { cat, thisSpent, prevSpent, delta, deltaPct };
+      })
+      .filter((d) => d.thisSpent > 0 || d.prevSpent > 0);
+  }, [categories, catTotals, expenses, recurring, year, month]);
 
   // 6-month spending trend
   const trendData = useMemo(() => {
@@ -428,6 +451,41 @@ export default function BudgetPage() {
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {momData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Mesiac / predchádzajúci mesiac</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {momData.map(({ cat, thisSpent, prevSpent, delta, deltaPct }) => {
+                      const improved = delta < 0;
+                      const unchanged = delta === 0;
+                      return (
+                        <div key={cat.id} className="flex items-center gap-3">
+                          <span className="text-sm w-4">{cat.icon}</span>
+                          <span className="text-sm flex-1 min-w-0 truncate">{cat.name}</span>
+                          <span className="text-xs text-muted-foreground w-16 text-right tabular-nums">{fmt(prevSpent)}</span>
+                          <span className="text-muted-foreground text-xs">→</span>
+                          <span className="text-sm font-semibold w-16 text-right tabular-nums">{fmt(thisSpent)}</span>
+                          <span className={`flex items-center gap-0.5 text-xs w-16 justify-end tabular-nums ${improved ? "text-green-600" : delta > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                            {unchanged ? (
+                              <Minus className="w-3 h-3" />
+                            ) : improved ? (
+                              <TrendingDown className="w-3 h-3" />
+                            ) : (
+                              <TrendingUp className="w-3 h-3" />
+                            )}
+                            {deltaPct !== null ? `${delta > 0 ? "+" : ""}${deltaPct.toFixed(0)}%` : delta > 0 ? `+${fmt(delta)}` : "—"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -716,15 +774,25 @@ export default function BudgetPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>{editingCat ? "Upraviť kategóriu" : "Nová kategória"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="text-xs text-muted-foreground mb-1 block">Názov</label>
-                <Input placeholder="napr. Šport" value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })} />
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Názov</label>
+              <Input placeholder="napr. Šport" value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Ikona</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {["🏠","🍽️","🚗","💊","🎬","👕","📚","🛡️","💰","📦","✈️","🏋️","🐾","🎮","☕","🎁","💈","🏥","📱","⚡","🎓","🛒","🏖️","💻"].map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setCatForm({ ...catForm, icon: e })}
+                    className={`text-lg p-1 rounded-md border transition-colors ${catForm.icon === e ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"}`}
+                  >
+                    {e}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Emoji</label>
-                <Input placeholder="🏃" value={catForm.icon} onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })} />
-              </div>
+              <Input placeholder="alebo vlož vlastné emoji" value={catForm.icon} onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })} className="text-sm" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

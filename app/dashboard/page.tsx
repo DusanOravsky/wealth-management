@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard, CalendarClock } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -108,6 +108,7 @@ const CHART_RANGES = [
 export default function DashboardPage() {
   const [assetFilter, setAssetFilter] = React.useState("all");
   const [chartRange, setChartRange] = useState<30 | 90 | 365>(30);
+  const [chartMode, setChartMode] = useState<"total" | "stacked">("total");
   const {
     portfolioSummary,
     portfolioLoading,
@@ -135,10 +136,21 @@ export default function DashboardPage() {
   }));
   const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
 
-  const chartData = snapshots.slice(-chartRange).map((s) => ({
-    date: s.date.slice(5),
-    total: Math.round(s.totalEur * displayRate),
-  }));
+  const chartData = snapshots.slice(-chartRange).map((s) => {
+    const entry: { date: string; total: number; [key: string]: number | string } = {
+      date: s.date.slice(5),
+      total: Math.round(s.totalEur * displayRate),
+    };
+    if (s.breakdown) {
+      for (const [cat, val] of Object.entries(s.breakdown)) {
+        entry[cat] = Math.round((val as number) * displayRate);
+      }
+    }
+    return entry;
+  });
+  const stackedCategories = Object.keys(CATEGORY_COLORS).filter(
+    (cat) => chartData.some((d) => Number(d[cat] ?? 0) > 0)
+  );
 
   const firstSnap = chartData[0]?.total ?? 0;
   const lastSnap = chartData[chartData.length - 1]?.total ?? 0;
@@ -359,9 +371,22 @@ export default function DashboardPage() {
         {/* History chart */}
         {chartData.length > 1 && (
           <Card className="shadow-sm">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-base font-semibold">Vývoj majetku</CardTitle>
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap">
+                <button
+                  onClick={() => setChartMode("total")}
+                  className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${chartMode === "total" ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"}`}
+                >
+                  Celkové
+                </button>
+                <button
+                  onClick={() => setChartMode("stacked")}
+                  className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${chartMode === "stacked" ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"}`}
+                >
+                  Kategórie
+                </button>
+                <div className="w-px bg-border mx-0.5" />
                 {CHART_RANGES.map((r) => (
                   <button
                     key={r.days}
@@ -379,39 +404,83 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="totalGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-50" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `${displaySymbol}${(v / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "0.75rem",
-                      fontSize: "12px",
-                    }}
-                    formatter={(v) => [`${displaySymbol}${Number(v).toLocaleString("sk-SK")}`, "Majetok"]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke="#6366f1"
-                    fill="url(#totalGrad)"
-                    strokeWidth={2.5}
-                    dot={false}
-                  />
-                </AreaChart>
+                {chartMode === "stacked" && stackedCategories.length > 0 ? (
+                  <AreaChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-50" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `${displaySymbol}${(v / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "0.75rem",
+                        fontSize: "12px",
+                      }}
+                      formatter={(v, name) => [
+                        `${displaySymbol}${Number(v).toLocaleString("sk-SK")}`,
+                        CATEGORY_LABELS[name as string] ?? name,
+                      ]}
+                    />
+                    <Legend
+                      formatter={(v) => CATEGORY_LABELS[v] ?? v}
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: "11px" }}
+                    />
+                    {stackedCategories.map((cat) => (
+                      <Area
+                        key={cat}
+                        type="monotone"
+                        dataKey={cat}
+                        stackId="1"
+                        stroke={CATEGORY_COLORS[cat]}
+                        fill={CATEGORY_COLORS[cat]}
+                        fillOpacity={0.75}
+                        strokeWidth={1}
+                        dot={false}
+                      />
+                    ))}
+                  </AreaChart>
+                ) : (
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="totalGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-50" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `${displaySymbol}${(v / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "0.75rem",
+                        fontSize: "12px",
+                      }}
+                      formatter={(v) => [`${displaySymbol}${Number(v).toLocaleString("sk-SK")}`, "Majetok"]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="total"
+                      stroke="#6366f1"
+                      fill="url(#totalGrad)"
+                      strokeWidth={2.5}
+                      dot={false}
+                    />
+                  </AreaChart>
+                )}
               </ResponsiveContainer>
             </CardContent>
           </Card>

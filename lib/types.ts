@@ -222,8 +222,9 @@ export interface Insurance {
 // Price alert
 export interface PriceAlert {
   id: string;
-  assetType: "gold" | "silver" | "crypto";
+  assetType: "gold" | "silver" | "platinum" | "palladium" | "stock" | "crypto";
   coinId?: string;   // for crypto — CoinGecko ID
+  ticker?: string;   // for stock — Yahoo Finance ticker
   label: string;     // display name, e.g. "Bitcoin", "Zlato"
   condition: "above" | "below";
   targetPrice: number; // EUR
