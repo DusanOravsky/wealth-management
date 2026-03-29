@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
 import { AppShell } from "@/components/layout/AppShell";
 import {
   loadBudgetCategories, saveBudgetCategories,
@@ -14,10 +15,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import type { BudgetCategory, Expense, RecurringExpense } from "@/lib/types";
+import type { ParsedReceipt } from "@/components/ReceiptScannerDialog";
+
+const ReceiptScannerDialog = dynamic(
+  () => import("@/components/ReceiptScannerDialog").then((m) => m.ReceiptScannerDialog),
+  { ssr: false }
+);
 
 // ─── Default categories ───────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES: BudgetCategory[] = [
@@ -103,6 +110,9 @@ export default function BudgetPage() {
   });
   const [expenses, setExpenses] = useState<Expense[]>(() => loadExpenses());
   const [recurring, setRecurring] = useState<RecurringExpense[]>(() => loadRecurringExpenses());
+
+  // QR scanner
+  const [scanOpen, setScanOpen] = useState(false);
 
   // Expense dialog
   const [expOpen, setExpOpen] = useState(false);
@@ -241,6 +251,16 @@ export default function BudgetPage() {
   function openAddExp() {
     setEditingExp(null);
     setExpForm({ categoryId: categories[0]?.id ?? "", amount: 0, date: today.toISOString().slice(0, 10), description: "" });
+    setExpOpen(true);
+  }
+  function handleReceiptScanned(receipt: ParsedReceipt) {
+    setEditingExp(null);
+    setExpForm({
+      categoryId: categories[0]?.id ?? "",
+      amount: receipt.amount ?? 0,
+      date: receipt.date,
+      description: receipt.description,
+    });
     setExpOpen(true);
   }
   function openEditExp(e: Expense) {
@@ -607,7 +627,11 @@ export default function BudgetPage() {
 
           {/* ── Expenses tab ── */}
           <TabsContent value="expenses" className="space-y-3 mt-4">
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 flex-wrap">
+              <Button size="sm" variant="outline" onClick={() => setScanOpen(true)}>
+                <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                Skenovať bloček
+              </Button>
               <input ref={csvImportRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importFromCSV} />
               <Button size="sm" variant="outline" onClick={() => csvImportRef.current?.click()}>
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
@@ -806,6 +830,13 @@ export default function BudgetPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Receipt QR scanner */}
+      <ReceiptScannerDialog
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onScanned={handleReceiptScanned}
+      />
 
       {/* Add/Edit expense dialog */}
       <Dialog open={expOpen} onOpenChange={setExpOpen}>
