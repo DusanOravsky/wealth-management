@@ -881,9 +881,11 @@ export default function SettingsPage() {
             {qrLoading && <p className="text-sm text-muted-foreground">Generujem QR kód...</p>}
             {qrSvg && (
               <>
-                <div
-                  className="rounded-lg border bg-white p-2"
-                  dangerouslySetInnerHTML={{ __html: qrSvg }}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`data:image/svg+xml;base64,${btoa(qrSvg)}`}
+                  alt="QR kód"
+                  className="rounded-lg border bg-white p-2 w-64 h-64"
                 />
                 <p className="text-xs text-muted-foreground text-center">
                   Naskenuj QR kód mobilom. Otvorí sa aplikácia s možnosťou importu.

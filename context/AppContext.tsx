@@ -164,13 +164,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let currentPrice = 0;
       if (alert.assetType === "gold") currentPrice = goldPrice;
       else if (alert.assetType === "silver") currentPrice = silverPrice;
+      else if (alert.assetType === "platinum") currentPrice = platinumPrice;
+      else if (alert.assetType === "palladium") currentPrice = palladiumPrice;
       else if (alert.assetType === "crypto" && alert.coinId) {
         const found = cryptoPrices.find((p) => p.id === alert.coinId);
         currentPrice = found?.current_price ?? 0;
-      }
-      if (alert.assetType === "platinum") currentPrice = platinumPrice;
-      else if (alert.assetType === "palladium") currentPrice = palladiumPrice;
-      else if (alert.assetType === "stock" && alert.ticker) {
+      } else if (alert.assetType === "stock" && alert.ticker) {
         const priceUsd = stockPrices[alert.ticker.toUpperCase()];
         if (priceUsd) currentPrice = priceUsd / (rates["USD"] ?? 1.09);
       }

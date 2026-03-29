@@ -526,9 +526,10 @@ export default function DashboardPage() {
             },
             {
               label: "Bitcoin",
-              value: cryptoPrices.find((p) => p.id === "bitcoin")
-                ? `€${cryptoPrices.find((p) => p.id === "bitcoin")!.current_price.toLocaleString("sk-SK")}`
-                : "—",
+              value: (() => {
+                const btc = cryptoPrices.find((p) => p.id === "bitcoin");
+                return btc ? `€${btc.current_price.toLocaleString("sk-SK")}` : "—";
+              })(),
               sub: "aktuálna cena",
               color: "#fb923c",
             },

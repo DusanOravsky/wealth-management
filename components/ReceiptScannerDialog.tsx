@@ -3,7 +3,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { QrCode, X } from "lucide-react";
+import { QrCode, Barcode, X } from "lucide-react";
 
 export interface ParsedReceipt {
   amount?: number;
@@ -61,6 +61,7 @@ export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
   const controlsRef = useRef<IScannerControls | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [mode, setMode] = useState<"qr" | "barcode">("barcode");
 
   const stopScanning = useCallback(() => {
     if (controlsRef.current) {
@@ -154,10 +155,28 @@ export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
       <DialogContent className="sm:max-w-sm p-0 overflow-hidden gap-0">
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle className="flex items-center gap-2">
-            <QrCode className="w-5 h-5" />
+            {mode === "qr" ? <QrCode className="w-5 h-5" /> : <Barcode className="w-5 h-5" />}
             Skenovať bloček
           </DialogTitle>
         </DialogHeader>
+
+        {/* Mode toggle */}
+        <div className="flex mx-4 mb-1 rounded-lg overflow-hidden border text-sm">
+          <button
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 transition-colors ${mode === "barcode" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground"}`}
+            onClick={() => setMode("barcode")}
+          >
+            <Barcode className="w-3.5 h-3.5" />
+            Čiarový kód
+          </button>
+          <button
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 transition-colors ${mode === "qr" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground"}`}
+            onClick={() => setMode("qr")}
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            QR kód
+          </button>
+        </div>
 
         {/* Camera viewport */}
         <div className="relative bg-black w-full" style={{ aspectRatio: "4/3" }}>
@@ -171,18 +190,31 @@ export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
           />
           {/* Scan frame overlay */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative w-56 h-56">
-              {/* Corner brackets */}
-              <span className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-white rounded-tl" />
-              <span className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-white rounded-tr" />
-              <span className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-white rounded-bl" />
-              <span className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-white rounded-br" />
-              {/* Scan line animation */}
-              {ready && (
-                <span className="absolute left-2 right-2 h-0.5 bg-green-400/80 animate-[scanline_2s_ease-in-out_infinite]"
-                  style={{ top: "50%" }} />
-              )}
-            </div>
+            {mode === "qr" ? (
+              /* Square frame for QR */
+              <div className="relative w-52 h-52">
+                <span className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-white rounded-tl" />
+                <span className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-white rounded-tr" />
+                <span className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-white rounded-bl" />
+                <span className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-white rounded-br" />
+                {ready && (
+                  <span className="absolute left-2 right-2 h-0.5 bg-green-400/80 animate-[scanline_2s_ease-in-out_infinite]"
+                    style={{ top: "50%" }} />
+                )}
+              </div>
+            ) : (
+              /* Wide horizontal strip for 1D barcodes */
+              <div className="relative w-72 h-20">
+                <span className="absolute top-0 left-0 w-5 h-5 border-t-2 border-l-2 border-white rounded-tl" />
+                <span className="absolute top-0 right-0 w-5 h-5 border-t-2 border-r-2 border-white rounded-tr" />
+                <span className="absolute bottom-0 left-0 w-5 h-5 border-b-2 border-l-2 border-white rounded-bl" />
+                <span className="absolute bottom-0 right-0 w-5 h-5 border-b-2 border-r-2 border-white rounded-br" />
+                {ready && (
+                  <span className="absolute top-0 bottom-0 w-0.5 bg-red-400/80 animate-[scanline-h_2s_ease-in-out_infinite]"
+                    style={{ left: "50%" }} />
+                )}
+              </div>
+            )}
           </div>
           {/* Loading overlay */}
           {!ready && !error && (
@@ -197,7 +229,9 @@ export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
             <p className="text-xs text-destructive text-center">{error}</p>
           ) : (
             <p className="text-xs text-muted-foreground text-center">
-              Namierte kameru na QR kód alebo čiarový kód (EAN‑13, Code128, e‑Kasa…)
+              {mode === "barcode"
+                ? "Namierte kameru na čiarový kód (EAN‑13, Code128…)"
+                : "Namierte kameru na QR kód (e‑Kasa, JSON…)"}
             </p>
           )}
           <Button variant="ghost" className="w-full" onClick={handleClose}>
