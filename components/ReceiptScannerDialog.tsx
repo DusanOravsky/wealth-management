@@ -1,10 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import type { IScannerControls } from "@zxing/browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { QrCode, ImageIcon } from "lucide-react";
+import { Camera, ImageIcon, QrCode } from "lucide-react";
 
 export interface ParsedReceipt {
   amount?: number;
@@ -12,7 +11,7 @@ export interface ParsedReceipt {
   date: string;
 }
 
-function parseQR(text: string): ParsedReceipt {
+function parseCode(text: string): ParsedReceipt {
   const today = new Date().toISOString().slice(0, 10);
 
   // Slovak e-Kasa receipt URL
@@ -20,16 +19,13 @@ function parseQR(text: string): ParsedReceipt {
     try {
       const url = new URL(text);
       const id = url.searchParams.get("receiptId") ?? url.searchParams.get("id") ?? "";
-      return {
-        description: id ? `Bloček ${id.slice(0, 8)}` : "e-Kasa bloček",
-        date: today,
-      };
+      return { description: id ? `Bloček ${id.slice(0, 8)}` : "e-Kasa bloček", date: today };
     } catch {
       return { description: "e-Kasa bloček", date: today };
     }
   }
 
-  // Try JSON (custom receipt formats)
+  // Try JSON
   try {
     const obj = JSON.parse(text) as Record<string, unknown>;
     const amount =
@@ -54,6 +50,17 @@ function parseQR(text: string): ParsedReceipt {
   }
 }
 
+async function decodeImageFile(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const reader = new BrowserMultiFormatReader();
+    const result = await reader.decodeFromImageUrl(url);
+    return result.getText();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -61,85 +68,37 @@ interface Props {
 }
 
 export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState(false);
-  const [decoding, setDecoding] = useState(false);
 
-  function stopCamera() {
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    setActive(false);
-  }
-
-  useEffect(() => {
-    if (!open) {
-      stopCamera();
-      setError(null);
-      return;
-    }
-
-    setError(null);
-
-    async function startScanner() {
-      if (!videoRef.current) return;
-      try {
-        const reader = new BrowserMultiFormatReader();
-        const controls = await reader.decodeFromVideoDevice(
-          undefined,
-          videoRef.current,
-          (result, _err, ctrl) => {
-            if (result) {
-              ctrl.stop();
-              setActive(false);
-              onScanned(parseQR(result.getText()));
-              onClose();
-            }
-          }
-        );
-        controlsRef.current = controls;
-        setActive(true);
-      } catch {
-        setError("Kamera nie je dostupná. Skontroluj povolenia prehliadača.");
-      }
-    }
-
-    startScanner();
-    return () => stopCamera();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  async function scanFromImage(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
     setError(null);
-    setDecoding(true);
+    setLoading(true);
     try {
-      const url = URL.createObjectURL(file);
-      const reader = new BrowserMultiFormatReader();
-      const result = await reader.decodeFromImageUrl(url);
-      URL.revokeObjectURL(url);
-      stopCamera();
-      onScanned(parseQR(result.getText()));
+      const text = await decodeImageFile(file);
+      onScanned(parseCode(text));
       onClose();
     } catch {
-      setError("Kód sa nenašiel v obrázku. Skús odfotiť zreteľnejšie.");
+      setError("Kód sa nenašiel. Skús odfotiť zreteľnejšie alebo z bližšia.");
     } finally {
-      setDecoding(false);
+      setLoading(false);
     }
   }
 
   function handleClose() {
-    stopCamera();
+    setError(null);
+    setLoading(false);
     onClose();
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-xs">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <QrCode className="w-5 h-5" />
@@ -147,47 +106,50 @@ export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          {/* Camera viewfinder */}
-          {!error && (
-            <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
-              <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
-              {active && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-3/4 h-3/4 relative">
-                    <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-md" />
-                    <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-md" />
-                    <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-md" />
-                    <div className="absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-md" />
-                    {/* Scanning line animation */}
-                    <div className="absolute inset-x-0 top-1/2 h-0.5 bg-primary/60 animate-pulse" />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive text-center">
-              {error}
-            </div>
-          )}
-
+        <div className="space-y-3 py-1">
           <p className="text-xs text-muted-foreground text-center">
-            Funguje pre QR kódy aj čiarové kódy (EAN, Code128...)
+            Podporuje QR kódy aj čiarové kódy (EAN-13, Code128, e-Kasa...)
           </p>
 
-          {/* Gallery option */}
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={scanFromImage} />
+          {/* Camera capture */}
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFile}
+          />
+          <Button
+            className="w-full"
+            disabled={loading}
+            onClick={() => cameraRef.current?.click()}
+          >
+            <Camera className="w-4 h-4 mr-2" />
+            {loading ? "Dekódujem..." : "Odfotiť bloček"}
+          </Button>
+
+          {/* Gallery pick */}
+          <input
+            ref={galleryRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFile}
+          />
           <Button
             variant="outline"
             className="w-full"
-            disabled={decoding}
-            onClick={() => fileRef.current?.click()}
+            disabled={loading}
+            onClick={() => galleryRef.current?.click()}
           >
             <ImageIcon className="w-4 h-4 mr-2" />
-            {decoding ? "Dekódujem..." : "Nahrať z galérie / fotky"}
+            Vybrať z galérie
           </Button>
+
+          {error && (
+            <p className="text-xs text-destructive text-center">{error}</p>
+          )}
 
           <Button variant="ghost" className="w-full" onClick={handleClose}>
             Zrušiť
