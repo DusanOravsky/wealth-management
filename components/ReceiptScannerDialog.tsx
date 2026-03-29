@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import jsQR from "jsqr";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import type { IScannerControls } from "@zxing/browser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { QrCode } from "lucide-react";
+import { QrCode, ImageIcon } from "lucide-react";
 
 export interface ParsedReceipt {
   amount?: number;
@@ -47,10 +48,8 @@ function parseQR(text: string): ParsedReceipt {
       : typeof obj.datum === "string" ? obj.datum
       : typeof obj.createDate === "string" ? obj.createDate
       : null;
-    const date = rawDate ? rawDate.slice(0, 10) : today;
-    return { amount, description, date };
+    return { amount, description, date: rawDate ? rawDate.slice(0, 10) : today };
   } catch {
-    // Use raw text as description
     return { description: text.slice(0, 80), date: today };
   }
 }
@@ -63,74 +62,75 @@ interface Props {
 
 export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animRef = useRef<number>(0);
+  const controlsRef = useRef<IScannerControls | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(false);
+  const [decoding, setDecoding] = useState(false);
 
   function stopCamera() {
-    cancelAnimationFrame(animRef.current);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+    controlsRef.current?.stop();
+    controlsRef.current = null;
     setActive(false);
   }
 
   useEffect(() => {
     if (!open) {
       stopCamera();
+      setError(null);
       return;
     }
 
     setError(null);
 
-    async function startCamera() {
+    async function startScanner() {
+      if (!videoRef.current) return;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
-        await video.play();
+        const reader = new BrowserMultiFormatReader();
+        const controls = await reader.decodeFromVideoDevice(
+          undefined,
+          videoRef.current,
+          (result, _err, ctrl) => {
+            if (result) {
+              ctrl.stop();
+              setActive(false);
+              onScanned(parseQR(result.getText()));
+              onClose();
+            }
+          }
+        );
+        controlsRef.current = controls;
         setActive(true);
-
-        function doScan() {
-          const v = videoRef.current;
-          const c = canvasRef.current;
-          if (!v || !c) return;
-          if (v.readyState < v.HAVE_ENOUGH_DATA) {
-            animRef.current = requestAnimationFrame(doScan);
-            return;
-          }
-          c.width = v.videoWidth;
-          c.height = v.videoHeight;
-          const ctx = c.getContext("2d");
-          if (!ctx) return;
-          ctx.drawImage(v, 0, 0);
-          const imageData = ctx.getImageData(0, 0, c.width, c.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
-          });
-          if (code) {
-            stopCamera();
-            onScanned(parseQR(code.data));
-            onClose();
-          } else {
-            animRef.current = requestAnimationFrame(doScan);
-          }
-        }
-        animRef.current = requestAnimationFrame(doScan);
       } catch {
         setError("Kamera nie je dostupná. Skontroluj povolenia prehliadača.");
       }
     }
 
-    startCamera();
+    startScanner();
     return () => stopCamera();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  async function scanFromImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setError(null);
+    setDecoding(true);
+    try {
+      const url = URL.createObjectURL(file);
+      const reader = new BrowserMultiFormatReader();
+      const result = await reader.decodeFromImageUrl(url);
+      URL.revokeObjectURL(url);
+      stopCamera();
+      onScanned(parseQR(result.getText()));
+      onClose();
+    } catch {
+      setError("Kód sa nenašiel v obrázku. Skús odfotiť zreteľnejšie.");
+    } finally {
+      setDecoding(false);
+    }
+  }
 
   function handleClose() {
     stopCamera();
@@ -146,12 +146,10 @@ export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
             Skenovať bloček
           </DialogTitle>
         </DialogHeader>
+
         <div className="space-y-3">
-          {error ? (
-            <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive text-center">
-              {error}
-            </div>
-          ) : (
+          {/* Camera viewfinder */}
+          {!error && (
             <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
               <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
               {active && (
@@ -161,16 +159,37 @@ export function ReceiptScannerDialog({ open, onClose, onScanned }: Props) {
                     <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-md" />
                     <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-md" />
                     <div className="absolute bottom-0 right-0 w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-md" />
+                    {/* Scanning line animation */}
+                    <div className="absolute inset-x-0 top-1/2 h-0.5 bg-primary/60 animate-pulse" />
                   </div>
                 </div>
               )}
             </div>
           )}
-          <canvas ref={canvasRef} className="hidden" />
+
+          {error && (
+            <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive text-center">
+              {error}
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground text-center">
-            Namier kameru na QR kód bločku — automaticky naskenuje
+            Funguje pre QR kódy aj čiarové kódy (EAN, Code128...)
           </p>
-          <Button variant="outline" className="w-full" onClick={handleClose}>
+
+          {/* Gallery option */}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={scanFromImage} />
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={decoding}
+            onClick={() => fileRef.current?.click()}
+          >
+            <ImageIcon className="w-4 h-4 mr-2" />
+            {decoding ? "Dekódujem..." : "Nahrať z galérie / fotky"}
+          </Button>
+
+          <Button variant="ghost" className="w-full" onClick={handleClose}>
             Zrušiť
           </Button>
         </div>

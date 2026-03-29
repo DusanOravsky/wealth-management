@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "skills": {
+    "3-statement-model": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "1bf9f28bb52c29f8bb976d5bcba88910307983866424d43ff209b9c305eea9c8"
+    },
+    "audit-xls": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "890ac2385d133a0fe7f11bf7dc0b6ebe4a844fdbe2eccdecb1d863b298517584"
+    },
+    "bond-futures-basis": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "0f9229e21e8f300bbb6f025858c60c580e7d8c58ccdcbf2e2a8f3626887a7621"
+    },
+    "bond-relative-value": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "80b5a3ae15969caca369911037d21eb0fb4b5fd9b46d5db57b2af3e79c11ac8f"
+    },
+    "clean-data-xls": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "a8cd312f1c7d91022f61f1a3be8c0e82d04d63c584e681bd934f36a679c139b6"
+    },
+    "code-review": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "computedHash": "919719020590499db120437b53defa7dcb05e138aa5ce9e55034b88dbad7fff8"
+    },
+    "competitive-analysis": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "14cf7f97a5f70a7c18c4f984de9301d446c23eb1f25f9e66add2025b4a65a30f"
+    },
+    "comps-analysis": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "0e0c5e94e64e20d734874daf2afab71dfcb7e48f2064d34146e09128f1de6fdd"
+    },
+    "datapack-builder": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "cce2626741bf1a34e300afedd538bcbcdc3e8ba2f9b3df333a62ef91538ad6db"
+    },
+    "dcf-model": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "a0962b1a3a808c15b452199366f13cdffcc0a16eff4f8458d28d892f1de249f9"
+    },
+    "deck-refresh": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "77c6ea935b75eeb50db6663a9b9e2217cc5f2b2342be38e3f59fb82ce79b7e8c"
+    },
+    "earnings-analysis": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "57da904968b9c28d0538f0876078601e662aa12932aeffda45391cd832eb5dcd"
+    },
+    "earnings-preview-single": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "4d4c690bfbd1916baf8e50efe56ac9606d905ed73003430f8244b77ea1b9938f"
+    },
+    "equity-research": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "dc02cfb86e237e6c82db8bce7ed34bbd7cea6e6736d49b2c72b6615ac9518e6f"
+    },
+    "fixed-income-portfolio": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "7f85f818e6e6baca5b03e7accc48ce64763d62f9199a3a9e562db9d76c44ea3c"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
+    },
+    "fsi-strip-profile": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "1a0b1b4492de09c99cd2dae6ea3fd86074430781b066ae8f40e57cf1e361fc4b"
+    },
+    "funding-digest": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "ef27010710e62755beec0b0432aae4d4477e09b2dfaba2ebf07c9ef9d9a05fc8"
+    },
+    "fx-carry-trade": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "745838f97feafcfed1e0bd241cb669935a2a19542ecd151627777461a361f26d"
+    },
+    "ib-check-deck": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "a6eac58eb22f971aa8ef5af8cd618f911cbb2872f5da1964d50a5a5ee77fe35b"
+    },
+    "initiating-coverage": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "a7b412545b16145a5b2ebdb14bc16086c8a33143fa58abdfba2955c995135074"
+    },
+    "lbo-model": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "7c98e2a35b2ff33a9b7d715ddffcabce9be695ed406dd436bf2eb3d3971c7c8d"
+    },
+    "macro-rates-monitor": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "143cb50a4d243291d850f29dcf1425bd078b2207c06da7ba13ffd73b8731f7cb"
+    },
+    "option-vol-analysis": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "2189582b63f63a38b62876b993cc2beaf73bbf9701d60720084fef3001dcbd1c"
+    },
+    "pitch-deck": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "52cb8677872896c311b474ad78c0339224af063bfe5e05e466c83b3e83a8fcb9"
+    },
+    "ppt-template-creator": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "4bf6e49b5a539c04f26d99ca82e1d0d9203927dc3f499b5d3b09a3a616eb655a"
+    },
+    "skill-creator": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "272d984e884ac4eddca9c78730d2bdd60c0c14864ca35e166fed89553d7f9c97"
+    },
+    "swap-curve-strategy": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "6e2587781d4351f49bf6165f080e80902ed6a142038f5e3d9b50a66c85b54578"
+    },
+    "tear-sheet": {
+      "source": "anthropics/financial-services-plugins",
+      "sourceType": "github",
+      "computedHash": "0f3477bb160025c2e3c81b5d4c15ff418c9d93e2f9b9f0d69288325b7d3715a7"
+    }
+  }
+}

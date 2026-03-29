@@ -254,14 +254,13 @@ export default function BudgetPage() {
     setExpOpen(true);
   }
   function handleReceiptScanned(receipt: ParsedReceipt) {
-    setEditingExp(null);
-    setExpForm({
-      categoryId: categories[0]?.id ?? "",
-      amount: receipt.amount ?? 0,
+    setScanOpen(false);
+    setExpForm((f) => ({
+      ...f,
+      amount: receipt.amount ?? f.amount,
       date: receipt.date,
       description: receipt.description,
-    });
-    setExpOpen(true);
+    }));
   }
   function openEditExp(e: Expense) {
     setEditingExp(e);
@@ -628,10 +627,6 @@ export default function BudgetPage() {
           {/* ── Expenses tab ── */}
           <TabsContent value="expenses" className="space-y-3 mt-4">
             <div className="flex justify-end gap-2 flex-wrap">
-              <Button size="sm" variant="outline" onClick={() => setScanOpen(true)}>
-                <QrCode className="w-3.5 h-3.5 mr-1.5" />
-                Skenovať bloček
-              </Button>
               <input ref={csvImportRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importFromCSV} />
               <Button size="sm" variant="outline" onClick={() => csvImportRef.current?.click()}>
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
@@ -838,11 +833,24 @@ export default function BudgetPage() {
         onScanned={handleReceiptScanned}
       />
 
+      {/* Receipt QR/barcode scanner */}
+      <ReceiptScannerDialog
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onScanned={handleReceiptScanned}
+      />
+
       {/* Add/Edit expense dialog */}
       <Dialog open={expOpen} onOpenChange={setExpOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editingExp ? "Upraviť výdavok" : "Pridať výdavok"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            {!editingExp && (
+              <Button variant="outline" size="sm" className="w-full" onClick={() => setScanOpen(true)}>
+                <QrCode className="w-4 h-4 mr-2" />
+                Skenovať bloček (QR / čiarový kód)
+              </Button>
+            )}
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Kategória</label>
               <Select value={expForm.categoryId} onValueChange={(v) => setExpForm({ ...expForm, categoryId: v ?? "" })}>
