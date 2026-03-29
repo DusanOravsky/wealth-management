@@ -188,13 +188,29 @@ export function saveWatchlist(items: StockWatchItem[]): void {
   rawSet(STORE_KEYS.WATCHLIST, JSON.stringify(items));
 }
 
-// ---------- Session (in-memory only) ----------
+// ---------- Session (sessionStorage + in-memory fallback) ----------
+// sessionStorage survives page reloads within the same tab (e.g. hard navigation
+// in static-export PWA on mobile), but is cleared when the tab is closed.
 
+const SESSION_KEY = "wm_session_pin";
 let _sessionPin: string | null = null;
 
-export function setSession(pin: string): void { _sessionPin = pin; }
-export function getSession(): string | null { return _sessionPin; }
-export function clearSession(): void { _sessionPin = null; }
+export function setSession(pin: string): void {
+  _sessionPin = pin;
+  try { sessionStorage.setItem(SESSION_KEY, pin); } catch { /* private mode */ }
+}
+export function getSession(): string | null {
+  if (_sessionPin) return _sessionPin;
+  try {
+    const stored = sessionStorage.getItem(SESSION_KEY);
+    if (stored) { _sessionPin = stored; return stored; }
+  } catch { /* private mode */ }
+  return null;
+}
+export function clearSession(): void {
+  _sessionPin = null;
+  try { sessionStorage.removeItem(SESSION_KEY); } catch { /* private mode */ }
+}
 
 // ---------- Export / Import ----------
 
