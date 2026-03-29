@@ -1,10 +1,10 @@
 {
   "name": "wealth-management",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/versioned-sw.mjs",
     "start": "next start",
     "lint": "eslint"
   },
