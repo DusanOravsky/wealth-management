@@ -187,7 +187,11 @@ See `lib/types.ts` for full definitions.
 - MoM comparison card, budget forecast banner
 - CSV import (smart column detection: SK/EN/DE headers) + CSV export
 - Emoji picker (80+ emoji) for categories
-- Receipt scanner in "Pridať výdavok" dialog: live camera scans QR codes + 1D barcodes (EAN-13, Code128, e-Kasa)
+- Receipt scanner in "Pridať výdavok" dialog: live camera with mode toggle:
+  - **Čiarový kód** (default): wide horizontal strip overlay + vertical red scan line — for EAN-13, Code128
+  - **QR kód**: square overlay + horizontal green scan line — for e-Kasa, JSON QR
+  - `@zxing/browser` `BrowserMultiFormatReader` scans full frame regardless of overlay mode
+  - `IScannerControls.stop()` used to release camera stream on close/scan
 
 ### Insurance
 - CSS timeline card (horizontal bars per policy, color-coded by expiry)
@@ -221,6 +225,16 @@ See `lib/types.ts` for full definitions.
 - `max_tokens: 2048` (1024 was too small → truncated JSON)
 - JSON extraction uses bracket-depth parser `extractJsonArray()` (regex was catching trailing text)
 - Both use `anthropic-dangerous-direct-browser-access: true` header
+
+---
+
+## Code Patterns & Gotchas
+
+- **QR SVG rendering:** Use `<img src={`data:image/svg+xml;base64,${btoa(svg)}`}>` — NOT `dangerouslySetInnerHTML` with raw SVG
+- **Price alert chain:** All assetType checks must be in a single `if/else if` chain — never two separate `if` blocks (was a latent bug, fixed)
+- **Non-null assertions on `.find()`:** Never use `!` on `.find()` result; use optional chaining + nullish coalescing (`?.current_price ?? 0`)
+- **`scanline-h` CSS animation:** defined in `globals.css` — horizontal scan line for barcode mode
+- **`scanline` CSS animation:** defined in `globals.css` — vertical scan line for QR mode
 
 ---
 
