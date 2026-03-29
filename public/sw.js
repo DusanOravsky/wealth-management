@@ -1,4 +1,4 @@
-const CACHE = "wm-v5";
+const CACHE = "wm-v6";
 const BASE = "/wealth-management";
 
 const PRECACHE = [
@@ -27,7 +27,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(PRECACHE).catch(() => {}))
   );
-  self.skipWaiting();
+  // Don't skipWaiting — wait for user to approve the update via popup
 });
 
 self.addEventListener("activate", (event) => {
@@ -38,12 +38,15 @@ self.addEventListener("activate", (event) => {
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
-      .then(async () => {
-        // Reload open clients so they pick up fresh JS bundles after SW update
-        const clients = await self.clients.matchAll({ type: "window" });
-        clients.forEach((client) => client.navigate(client.url));
-      })
   );
+  // No forced navigate — app reloads itself after user confirms update
+});
+
+// App sends SKIP_WAITING when user clicks "Aktualizovať"
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {
