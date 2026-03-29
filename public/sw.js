@@ -1,4 +1,4 @@
-const CACHE = "wm-v4";
+const CACHE = "wm-v5";
 const BASE = "/wealth-management";
 
 const PRECACHE = [
@@ -18,6 +18,9 @@ const PRECACHE = [
   BASE + "/alerts",
   BASE + "/advisor",
   BASE + "/settings",
+  BASE + "/manifest.json",
+  BASE + "/icon-192.png",
+  BASE + "/icon-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -36,7 +39,7 @@ self.addEventListener("activate", (event) => {
       )
       .then(() => self.clients.claim())
       .then(async () => {
-        // Force all open PWA clients to reload so they get fresh JS bundles
+        // Reload open clients so they pick up fresh JS bundles after SW update
         const clients = await self.clients.matchAll({ type: "window" });
         clients.forEach((client) => client.navigate(client.url));
       })
@@ -45,14 +48,28 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  // Only cache same-origin requests — skip external APIs
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
+  // Cache-first for Next.js static assets (content-hashed — safe to cache forever)
+  if (url.pathname.startsWith(BASE + "/_next/static/")) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()));
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // Network-first for everything else (HTML pages, icons, manifest)
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const clone = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, clone));
+        caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()));
         return response;
       })
       .catch(() => caches.match(event.request))

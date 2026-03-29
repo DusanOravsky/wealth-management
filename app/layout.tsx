@@ -5,6 +5,7 @@ import { AppProvider } from "@/context/AppContext";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
 import { PWARegister } from "@/components/PWARegister";
+import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,6 +44,7 @@ export default function RootLayout({
             {children}
             <Toaster richColors position="top-right" />
             <PWARegister />
+            <PWAInstallBanner />
           </AppProvider>
         </ThemeProvider>
       </body>

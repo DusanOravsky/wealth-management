@@ -6,7 +6,6 @@ import { Sidebar } from "./Sidebar";
 import { BottomNav } from "./BottomNav";
 import { PINScreen } from "@/components/auth/PINScreen";
 import { TrendingUp, Menu, WifiOff } from "lucide-react";
-import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pinState } = useApp();
@@ -105,7 +104,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <BottomNav onMoreClick={() => setSidebarOpen(true)} />
-      <PWAInstallBanner />
     </div>
   );
 }

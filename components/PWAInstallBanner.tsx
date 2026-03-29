@@ -4,129 +4,140 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, X, Share } from "lucide-react";
 
-type Platform = "android" | "ios" | null;
-
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-// Capture the event as early as possible (before React mounts)
+// Capture as early as possible — before React mounts
 let _capturedPrompt: BeforeInstallPromptEvent | null = null;
 if (typeof window !== "undefined") {
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     _capturedPrompt = e as BeforeInstallPromptEvent;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__wm_install_prompt = _capturedPrompt;
   });
 }
 
-const DISMISSED_KEY = "wm_pwa_dismissed";
+function isStandalone() {
+  if (typeof window === "undefined") return true;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator && (navigator as { standalone?: boolean }).standalone === true)
+  );
+}
 
-function detectPlatform(): Platform {
-  if (typeof window === "undefined") return null;
-  const ua = navigator.userAgent;
-  const isIOS = /iphone|ipad|ipod/i.test(ua);
-  const isAndroid = /android/i.test(ua);
-  const isStandalone =
-    ("standalone" in navigator && (navigator as { standalone?: boolean }).standalone) ||
-    window.matchMedia("(display-mode: standalone)").matches;
-  if (isStandalone) return null;
-  if (isIOS) return "ios";
-  if (isAndroid) return "android";
-  return null;
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
+}
+
+function isAndroid() {
+  return /android/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
+}
+
+const DISMISSED_KEY = "wm_install_dismissed_until";
+
+function isDismissed() {
+  try {
+    const until = localStorage.getItem(DISMISSED_KEY);
+    if (!until) return false;
+    return Date.now() < parseInt(until, 10);
+  } catch { return false; }
+}
+
+function dismissFor7Days() {
+  try { localStorage.setItem(DISMISSED_KEY, String(Date.now() + 7 * 24 * 60 * 60 * 1000)); } catch { /* */ }
 }
 
 export function PWAInstallBanner() {
-  const [platform, setPlatform] = useState<Platform>(null);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [visible, setVisible] = useState(false);
+  const [show, setShow] = useState(false);
+  const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [platform, setPlatform] = useState<"android" | "ios" | null>(null);
 
   useEffect(() => {
-    if (localStorage.getItem(DISMISSED_KEY)) return;
-    const p = detectPlatform();
-    if (!p) return;
-    setPlatform(p);
+    if (isStandalone() || isDismissed()) return;
 
-    if (p === "android") {
-      // Use already-captured prompt or listen for it
+    const ios = isIOS();
+    const android = isAndroid();
+    if (!ios && !android) return;
+
+    setPlatform(ios ? "ios" : "android");
+
+    if (android) {
+      // Use already-captured prompt or wait for it
       if (_capturedPrompt) {
-        setDeferredPrompt(_capturedPrompt);
-        setVisible(true);
+        setPrompt(_capturedPrompt);
+        setShow(true);
       } else {
         const handler = (e: Event) => {
           e.preventDefault();
           _capturedPrompt = e as BeforeInstallPromptEvent;
-          setDeferredPrompt(e as BeforeInstallPromptEvent);
-          setVisible(true);
+          setPrompt(_capturedPrompt);
+          setShow(true);
         };
         window.addEventListener("beforeinstallprompt", handler);
         return () => window.removeEventListener("beforeinstallprompt", handler);
       }
     } else {
-      // iOS: show instructions after short delay
-      const t = setTimeout(() => setVisible(true), 3000);
+      // iOS — show after short delay
+      const t = setTimeout(() => setShow(true), 2000);
       return () => clearTimeout(t);
     }
   }, []);
 
-  function dismiss() {
-    setVisible(false);
-    localStorage.setItem(DISMISSED_KEY, "1");
-  }
+  // Hide when installed
+  useEffect(() => {
+    const handler = () => { setShow(false); _capturedPrompt = null; };
+    window.addEventListener("appinstalled", handler);
+    return () => window.removeEventListener("appinstalled", handler);
+  }, []);
 
   async function install() {
-    if (!deferredPrompt) return;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
+    if (!prompt) return;
+    await prompt.prompt();
+    const { outcome } = await prompt.userChoice;
     if (outcome === "accepted") {
-      dismiss();
+      setShow(false);
       _capturedPrompt = null;
     }
   }
 
-  if (!visible) return null;
+  function dismiss() {
+    setShow(false);
+    dismissFor7Days();
+  }
+
+  if (!show) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 max-w-sm mx-auto">
-      <div
-        className="rounded-xl shadow-2xl p-4"
-        style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-        }}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 flex-1">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-            >
-              <Download className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Inštalovať aplikáciu</p>
-              {platform === "android" ? (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Pridaj na domovskú obrazovku pre rýchly prístup offline.
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  V Safari klikni{" "}
-                  <Share className="inline w-3.5 h-3.5 mx-0.5 align-middle" />
-                  {" "}→ <strong>Pridať na plochu</strong>
-                </p>
-              )}
-            </div>
+    <div className="fixed bottom-20 md:bottom-6 left-4 right-4 z-50 max-w-sm mx-auto animate-in slide-in-from-bottom-4 duration-300">
+      <div className="rounded-2xl shadow-2xl p-4" style={{
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        boxShadow: "0 8px 40px rgba(0,0,0,0.3)",
+      }}>
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+            <Download className="w-5 h-5 text-white" />
           </div>
-          <Button variant="ghost" size="sm" className="shrink-0 -mt-1 -mr-1 h-7 w-7 p-0" onClick={dismiss}>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm">Inštalovať aplikáciu</p>
+            {platform === "ios" ? (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Klikni <Share className="inline w-3 h-3 mx-0.5 align-middle" /> v Safari → <strong>Pridať na plochu</strong>
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Pridaj na domovskú obrazovku pre rýchly offline prístup.
+              </p>
+            )}
+          </div>
+          <Button variant="ghost" size="sm" className="shrink-0 h-7 w-7 p-0 -mt-0.5 -mr-0.5" onClick={dismiss}>
             <X className="w-4 h-4" />
           </Button>
         </div>
         {platform === "android" && (
-          <Button size="sm" className="mt-3 w-full" onClick={install}
+          <Button size="sm" className="mt-3 w-full font-semibold" onClick={install}
             style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none" }}>
             <Download className="w-4 h-4 mr-2" />
             Inštalovať
