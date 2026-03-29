@@ -278,19 +278,23 @@ export async function importBackup(json: string, pin: string, salt: string): Pro
 
 async function compressB64(data: string): Promise<string> {
   const encoder = new TextEncoder();
-  const stream = new CompressionStream("deflate-raw");
-  const writer = stream.writable.getWriter();
-  await writer.write(encoder.encode(data));
-  await writer.close();
-  // Race against a timeout — CompressionStream can hang on some mobile browsers
+  // Wrap the entire compression pipeline in a timeout race
+  // writer.close() can hang on some browsers — must be inside the race
+  const compress = async () => {
+    const stream = new CompressionStream("deflate-raw");
+    const writer = stream.writable.getWriter();
+    await writer.write(encoder.encode(data));
+    await writer.close();
+    const buf = await new Response(stream.readable).arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    bytes.forEach((b) => (binary += String.fromCharCode(b)));
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  };
   const timeout = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error("compression timeout")), 4000)
   );
-  const buf = await Promise.race([new Response(stream.readable).arrayBuffer(), timeout]);
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  bytes.forEach((b) => (binary += String.fromCharCode(b)));
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  return Promise.race([compress(), timeout]);
 }
 
 export async function decompressB64(b64: string): Promise<string> {

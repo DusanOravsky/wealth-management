@@ -1,48 +1,33 @@
 "use client";
 
-import { useEffect } from "react";
-import { toast } from "sonner";
-
-function showUpdateToast(worker: ServiceWorker) {
-  toast("Nová verzia je k dispozícii", {
-    description: "Aktualizuj aplikáciu pre najnovšie zmeny.",
-    duration: Infinity,
-    action: {
-      label: "Aktualizovať",
-      onClick: () => worker.postMessage({ type: "SKIP_WAITING" }),
-    },
-  });
-}
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 export function PWARegister() {
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
     navigator.serviceWorker
       .register("/wealth-management/sw.js", { scope: "/wealth-management/" })
       .then((registration) => {
-        // New SW already waiting (e.g. user came back after update was deployed)
         if (registration.waiting) {
-          showUpdateToast(registration.waiting);
+          setWaitingWorker(registration.waiting);
         }
-
-        // New SW found while app is open
         registration.addEventListener("updatefound", () => {
           const installing = registration.installing;
           if (!installing) return;
           installing.addEventListener("statechange", () => {
-            if (
-              installing.state === "installed" &&
-              navigator.serviceWorker.controller
-            ) {
-              showUpdateToast(installing);
+            if (installing.state === "installed" && navigator.serviceWorker.controller) {
+              setWaitingWorker(installing);
             }
           });
         });
       })
       .catch(() => {});
 
-    // After SKIP_WAITING → SW takes control → reload to get fresh bundles
     let reloading = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (!reloading) {
@@ -52,5 +37,20 @@ export function PWARegister() {
     });
   }, []);
 
-  return null;
+  function update() {
+    waitingWorker?.postMessage({ type: "SKIP_WAITING" });
+  }
+
+  if (!waitingWorker) return null;
+
+  return (
+    <div className="fixed top-0 inset-x-0 z-[100] flex items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-white"
+      style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+      <span>🚀 Nová verzia je k dispozícii</span>
+      <Button size="sm" variant="secondary" onClick={update} className="shrink-0 gap-1.5">
+        <RefreshCw className="w-3.5 h-3.5" />
+        Aktualizovať
+      </Button>
+    </div>
+  );
 }

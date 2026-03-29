@@ -56,6 +56,7 @@ export default function SettingsPage() {
   // QR transfer
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [qrSvg, setQrSvg] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null); // fallback text code
   const [qrLoading, setQrLoading] = useState(false);
   const [qrScanInput, setQrScanInput] = useState("");
   const [qrImportLoading, setQrImportLoading] = useState(false);
@@ -210,12 +211,22 @@ export default function SettingsPage() {
     if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
     setQrDialogOpen(true);
     setQrSvg(null);
+    setQrCode(null);
     setQrLoading(true);
     try {
       const encoded = await exportQRPayload(pin, settings.salt);
       const url = `https://dusanoravsky.github.io/wealth-management/#qr=${encoded}`;
-      const svg = renderSVG(url, { ecc: "L" });
-      setQrSvg(svg);
+      // QR codes max ~2900 bytes — if URL is longer, show text code instead
+      if (url.length > 2800) {
+        setQrCode(url);
+      } else {
+        try {
+          const svg = renderSVG(url, { ecc: "L" });
+          setQrSvg(svg);
+        } catch {
+          setQrCode(url); // renderSVG failed — fall back to text
+        }
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Chyba pri generovaní QR kódu.");
     } finally {
@@ -837,8 +848,27 @@ export default function SettingsPage() {
                   dangerouslySetInnerHTML={{ __html: qrSvg }}
                 />
                 <p className="text-xs text-muted-foreground text-center">
-                  Naskenuj tento kód mobilom (photo app alebo QR scanner). Otvorí sa aplikácia s možnosťou importu.
+                  Naskenuj QR kód mobilom. Otvorí sa aplikácia s možnosťou importu.
                 </p>
+              </>
+            )}
+            {qrCode && (
+              <>
+                <p className="text-xs text-muted-foreground text-center">
+                  Portfólio je príliš veľké pre QR kód. Skopíruj URL a vlož ju na mobile do poľa nižšie.
+                </p>
+                <textarea
+                  readOnly
+                  className="w-full text-xs font-mono bg-muted rounded-lg p-2 resize-none border"
+                  rows={4}
+                  value={qrCode}
+                  onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                />
+                <Button size="sm" variant="outline" className="w-full" onClick={() => {
+                  navigator.clipboard.writeText(qrCode).then(() => toast.success("Skopírované!"));
+                }}>
+                  Kopírovať do schránky
+                </Button>
               </>
             )}
           </div>
