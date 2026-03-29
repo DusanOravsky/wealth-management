@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useCountUp } from "@/hooks/useCountUp";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
@@ -35,6 +36,16 @@ const CATEGORY_LABELS: Record<string, string> = {
   crypto: "Krypto",
   stock: "Akcie",
   realestate: "Nehnuteľnosti",
+};
+
+const CATEGORY_HREFS: Record<string, string> = {
+  commodity: "/commodities",
+  cash: "/cash",
+  pension: "/pension",
+  bank: "/bank",
+  crypto: "/crypto",
+  stock: "/stocks",
+  realestate: "/realestate",
 };
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -233,26 +244,29 @@ export default function DashboardPage() {
             const value = grouped[key] ?? 0;
             const Icon = CATEGORY_ICONS[key];
             const color = CATEGORY_COLORS[key];
+            const href = CATEGORY_HREFS[key];
             return (
-              <Card key={key} className="border shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center"
-                      style={{ background: `${color}20` }}
-                    >
-                      <Icon className="w-4 h-4" style={{ color }} />
+              <Link key={key} href={href}>
+                <Card className="border shadow-sm hover:shadow-md active:scale-[0.97] transition-all cursor-pointer">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: `${color}20` }}
+                      >
+                        <Icon className="w-4 h-4" style={{ color }} />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        {pct(value, summary?.totalEur ?? 0)}
+                      </span>
                     </div>
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {pct(value, summary?.totalEur ?? 0)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="text-base font-bold mt-0.5">
-                    {displaySymbol}{Math.round(value * displayRate).toLocaleString("sk-SK")}
-                  </p>
-                </CardContent>
-              </Card>
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="text-base font-bold mt-0.5">
+                      {displaySymbol}{Math.round(value * displayRate).toLocaleString("sk-SK")}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
             );
           })}
         </div>
@@ -270,9 +284,11 @@ export default function DashboardPage() {
                   {[...pieData]
                     .sort((a, b) => b.value - a.value)
                     .map((item) => {
+                      const catKey = Object.keys(CATEGORY_LABELS).find((k) => CATEGORY_LABELS[k] === item.name);
+                      const href = catKey ? CATEGORY_HREFS[catKey] : undefined;
                       const pct = pieTotal > 0 ? (item.value / pieTotal) * 100 : 0;
-                      return (
-                        <div key={item.name}>
+                      const inner = (
+                        <>
                           <div className="flex justify-between text-sm mb-1.5">
                             <span className="flex items-center gap-2 text-sm">
                               <span className="w-2.5 h-2.5 rounded-full shrink-0 inline-block"
@@ -292,7 +308,14 @@ export default function DashboardPage() {
                           <p className="text-xs text-muted-foreground mt-0.5 text-right">
                             {fmtNum(item.value, displayCurrency)}
                           </p>
-                        </div>
+                        </>
+                      );
+                      return href ? (
+                        <Link key={item.name} href={href} className="block hover:opacity-80 transition-opacity cursor-pointer">
+                          {inner}
+                        </Link>
+                      ) : (
+                        <div key={item.name}>{inner}</div>
                       );
                     })}
                 </div>
