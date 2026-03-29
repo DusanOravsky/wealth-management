@@ -282,7 +282,11 @@ async function compressB64(data: string): Promise<string> {
   const writer = stream.writable.getWriter();
   await writer.write(encoder.encode(data));
   await writer.close();
-  const buf = await new Response(stream.readable).arrayBuffer();
+  // Race against a timeout — CompressionStream can hang on some mobile browsers
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("compression timeout")), 4000)
+  );
+  const buf = await Promise.race([new Response(stream.readable).arrayBuffer(), timeout]);
   const bytes = new Uint8Array(buf);
   let binary = "";
   bytes.forEach((b) => (binary += String.fromCharCode(b)));
