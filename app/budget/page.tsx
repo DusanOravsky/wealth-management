@@ -826,14 +826,7 @@ export default function BudgetPage() {
         </Tabs>
       </div>
 
-      {/* Receipt QR scanner */}
-      <ReceiptScannerDialog
-        open={scanOpen}
-        onClose={() => setScanOpen(false)}
-        onScanned={handleReceiptScanned}
-      />
-
-      {/* Receipt QR/barcode scanner */}
+      {/* Receipt QR / barcode scanner */}
       <ReceiptScannerDialog
         open={scanOpen}
         onClose={() => setScanOpen(false)}

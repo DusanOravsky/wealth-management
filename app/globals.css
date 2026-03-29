@@ -76,6 +76,12 @@
 .page-enter > *:nth-child(5) { animation-delay: 160ms; }
 .page-enter > *:nth-child(6) { animation-delay: 200ms; }
 
+@keyframes scanline {
+  0%   { transform: translateY(-80px); opacity: 0.8; }
+  50%  { transform: translateY(80px);  opacity: 0.8; }
+  100% { transform: translateY(-80px); opacity: 0.8; }
+}
+
 :root {
   --background: oklch(0.975 0.007 264);
   --foreground: oklch(0.145 0.022 264);
