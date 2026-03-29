@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
-import { saveApiKey, exportBackup, importBackup, wipeAll } from "@/lib/store";
+import { saveApiKey, loadApiKey, exportBackup, importBackup, wipeAll } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,8 @@ export default function SettingsPage() {
   const [coingeckoKey, setCoingeckoKey] = useState("");
   const [claudeKey, setClaudeKey] = useState("");
   const [showKeys, setShowKeys] = useState(false);
+  const [revealedClaudeKey, setRevealedClaudeKey] = useState<string | null>(null);
+  const [revealingClaudeKey, setRevealingClaudeKey] = useState(false);
 
   // Change PIN
   const [currentPin, setCurrentPin] = useState("");
@@ -100,6 +102,20 @@ export default function SettingsPage() {
       toast.success(`${label} uložený.`);
     } catch {
       toast.error("Chyba pri ukladaní kľúča.");
+    }
+  }
+
+  async function toggleRevealClaudeKey() {
+    if (revealedClaudeKey !== null) { setRevealedClaudeKey(null); return; }
+    if (!pin || !settings) { toast.error("Nie si prihlásený."); return; }
+    setRevealingClaudeKey(true);
+    try {
+      const key = await loadApiKey("claudeKey", pin, settings);
+      setRevealedClaudeKey(key ?? "");
+    } catch {
+      toast.error("Nepodarilo sa dešifrovať kľúč.");
+    } finally {
+      setRevealingClaudeKey(false);
     }
   }
 
@@ -782,6 +798,28 @@ export default function SettingsPage() {
                 <Save className="w-4 h-4" />
               </Button>
             </div>
+            {settings?.claudeKey && (
+              <div className="space-y-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={revealingClaudeKey}
+                  onClick={toggleRevealClaudeKey}
+                  className="gap-1.5"
+                >
+                  {revealedClaudeKey !== null ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {revealedClaudeKey !== null ? "Skryť kľúč" : revealingClaudeKey ? "Dešifrujem..." : "Zobraziť kľúč"}
+                </Button>
+                {revealedClaudeKey !== null && (
+                  <div
+                    className="rounded-md border bg-muted px-3 py-2 font-mono text-xs break-all select-all cursor-text"
+                    title="Klikni a označ celý kľúč"
+                  >
+                    {revealedClaudeKey || "(prázdny)"}
+                  </div>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               {settings?.claudeKey ? "✓ Claude API Key uložený" : "API Key nie je nastavený"}
             </p>

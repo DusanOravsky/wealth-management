@@ -13,6 +13,11 @@ export function PWARegister() {
     navigator.serviceWorker
       .register("/wealth-management/sw.js", { scope: "/wealth-management/" })
       .then((registration) => {
+        // Force a fresh fetch of sw.js, bypassing HTTP cache.
+        // GitHub Pages caches static files for up to 10 min; without this,
+        // the browser may never detect that sw.js changed.
+        registration.update().catch(() => {});
+
         if (registration.waiting) {
           setWaitingWorker(registration.waiting);
         }
