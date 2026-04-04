@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { getDecryptedKey } from "@/context/AppContext";
-import { loadInsurance, saveInsurance } from "@/lib/store";
+import { loadInsurance, saveInsurance, loadInsuranceClaims, saveInsuranceClaims } from "@/lib/store";
 import { fetchInsuranceAlternatives } from "@/lib/claude";
 import type { InsuranceAlternative } from "@/lib/claude";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,9 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Sparkles, ShieldCheck, AlertTriangle, Clock, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Sparkles, ShieldCheck, AlertTriangle, Clock, CheckCircle2, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { toast } from "sonner";
-import type { Insurance, Currency } from "@/lib/types";
+import type { Insurance, InsuranceClaim, Currency } from "@/lib/types";
 
 // Days notice required by Slovak law before anniversary to cancel
 const LEGAL_NOTICE_DAYS = 42; // 6 weeks
@@ -80,8 +80,14 @@ export default function InsurancePage() {
   const [aiResults, setAiResults] = useState<Record<string, InsuranceAlternative[]>>({});
   const [aiOpen, setAiOpen] = useState<string | null>(null);
 
+  const [claims, setClaims] = useState<InsuranceClaim[]>([]);
+  const [expandedClaims, setExpandedClaims] = useState<Set<string>>(new Set());
+  const [claimOpen, setClaimOpen] = useState<string | null>(null); // insuranceId
+  const [claimForm, setClaimForm] = useState({ date: "", amount: "", description: "", status: "open" as InsuranceClaim["status"], note: "" });
+
   useEffect(() => {
     setPolicies(loadInsurance());
+    setClaims(loadInsuranceClaims());
   }, []);
 
   const totalAnnual = useMemo(
@@ -121,10 +127,50 @@ export default function InsurancePage() {
     const updated = policies.filter((p) => p.id !== id);
     saveInsurance(updated);
     setPolicies(updated);
+    const updatedClaims = claims.filter((c) => c.insuranceId !== id);
+    saveInsuranceClaims(updatedClaims);
+    setClaims(updatedClaims);
     const newAi = { ...aiResults };
     delete newAi[id];
     setAiResults(newAi);
     toast.success("Odstránené.");
+  }
+
+  function handleAddClaim() {
+    if (!claimOpen) return;
+    if (!claimForm.date || !claimForm.description || !claimForm.amount) {
+      toast.error("Vyplň dátum, popis a sumu."); return;
+    }
+    const newClaim: InsuranceClaim = {
+      id: crypto.randomUUID(),
+      insuranceId: claimOpen,
+      date: claimForm.date,
+      amount: Number(claimForm.amount),
+      currency: "EUR",
+      description: claimForm.description,
+      status: claimForm.status,
+      note: claimForm.note || undefined,
+    };
+    const updated = [...claims, newClaim];
+    saveInsuranceClaims(updated);
+    setClaims(updated);
+    setClaimOpen(null);
+    toast.success("Škodová udalosť pridaná.");
+  }
+
+  function handleDeleteClaim(id: string) {
+    const updated = claims.filter((c) => c.id !== id);
+    saveInsuranceClaims(updated);
+    setClaims(updated);
+  }
+
+  function toggleClaimsExpand(insuranceId: string) {
+    setExpandedClaims((prev) => {
+      const next = new Set(prev);
+      if (next.has(insuranceId)) next.delete(insuranceId);
+      else next.add(insuranceId);
+      return next;
+    });
   }
 
   async function handleAI(ins: Insurance) {
@@ -307,6 +353,57 @@ export default function InsurancePage() {
                               Posledný deň výpovede: {new Date(new Date(ins.endDate).getTime() - LEGAL_NOTICE_DAYS * 86400000).toLocaleDateString("sk-SK")}
                             </p>
                           )}
+                          {/* Claims section */}
+                          {(() => {
+                            const insClaims = claims.filter((c) => c.insuranceId === ins.id);
+                            const isExpanded = expandedClaims.has(ins.id);
+                            const CLAIM_STATUS_LABELS = { open: "Otvorená", paid: "Vyplatená", rejected: "Zamietnutá" };
+                            const CLAIM_STATUS_COLORS = { open: "text-yellow-600", paid: "text-green-600", rejected: "text-red-500" };
+                            return (
+                              <div className="mt-2 pt-2 border-t">
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={() => toggleClaimsExpand(ins.id)}
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  Škodové udalosti
+                                  {insClaims.length > 0 && <span className="font-medium">({insClaims.length})</span>}
+                                  {isExpanded ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                                </button>
+                                {isExpanded && (
+                                  <div className="mt-2 space-y-1.5">
+                                    {insClaims.length === 0 && <p className="text-xs text-muted-foreground">Žiadne udalosti.</p>}
+                                    {insClaims.map((claim) => (
+                                      <div key={claim.id} className="flex items-start justify-between gap-2 text-xs group">
+                                        <div className="min-w-0">
+                                          <span className="font-medium">{claim.description}</span>
+                                          <span className="text-muted-foreground ml-1.5">{fmt(claim.amount, claim.currency)}</span>
+                                          <span className={`ml-1.5 ${CLAIM_STATUS_COLORS[claim.status]}`}>{CLAIM_STATUS_LABELS[claim.status]}</span>
+                                          <span className="text-muted-foreground ml-1.5">{new Date(claim.date).toLocaleDateString("sk-SK")}</span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-destructive"
+                                          onClick={() => handleDeleteClaim(claim.id)}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs mt-1"
+                                      onClick={() => { setClaimOpen(ins.id); setClaimForm({ date: "", amount: "", description: "", status: "open", note: "" }); }}
+                                    >
+                                      <Plus className="w-3 h-3 mr-1" />Pridať udalosť
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="flex flex-col gap-1 shrink-0">
                           <Button
@@ -407,6 +504,33 @@ export default function InsurancePage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Zrušiť</Button>
             <Button onClick={handleSave}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add claim dialog */}
+      <Dialog open={claimOpen !== null} onOpenChange={(open) => { if (!open) setClaimOpen(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Pridať škodovú udalosť</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input type="date" value={claimForm.date} onChange={(e) => setClaimForm((f) => ({ ...f, date: e.target.value }))} />
+            <Input placeholder="Popis udalosti" value={claimForm.description} onChange={(e) => setClaimForm((f) => ({ ...f, description: e.target.value }))} />
+            <Input type="number" placeholder="Suma (EUR)" value={claimForm.amount} onChange={(e) => setClaimForm((f) => ({ ...f, amount: e.target.value }))} />
+            <Select value={claimForm.status} onValueChange={(v) => setClaimForm((f) => ({ ...f, status: (v ?? "open") as InsuranceClaim["status"] }))}>
+              <SelectTrigger>
+                <SelectValue>{{ open: "Otvorená", paid: "Vyplatená", rejected: "Zamietnutá" }[claimForm.status]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Otvorená</SelectItem>
+                <SelectItem value="paid">Vyplatená</SelectItem>
+                <SelectItem value="rejected">Zamietnutá</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input placeholder="Poznámka (voliteľné)" value={claimForm.note} onChange={(e) => setClaimForm((f) => ({ ...f, note: e.target.value }))} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClaimOpen(null)}>Zrušiť</Button>
+            <Button onClick={handleAddClaim}>Pridať</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

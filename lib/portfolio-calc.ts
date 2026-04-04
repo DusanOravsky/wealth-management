@@ -86,7 +86,7 @@ export function calcPortfolioSummary(
     // Live price from Yahoo is in USD; convert via rates
     const pricePerShare = liveUsd != null
       ? toEur(liveUsd, "USD", prices.rates)
-      : toEur(s.currentPrice ?? s.purchasePrice, s.currency, prices.rates);
+      : toEur(s.currentPrice ?? s.purchasePrice ?? 0, s.currency, prices.rates);
     const valueEur = s.amount * pricePerShare;
     assets.push({
       label: `${s.name} (${s.ticker})`,

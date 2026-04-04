@@ -13,6 +13,13 @@ export const STORE_KEYS = {
   FIRE_SETTINGS: "wm_fire_settings",
   WATCHLIST: "wm_watchlist",
   TRIPS: "wm_trips",
+  BANK_TRANSACTIONS: "wm_bank_transactions",
+  PENSION_CONTRIBUTIONS: "wm_pension_contributions",
+  CRYPTO_TRANSACTIONS: "wm_crypto_transactions",
+  STOCK_TRANSACTIONS: "wm_stock_transactions",
+  GOAL_MILESTONES: "wm_goal_milestones",
+  ALERT_HISTORY: "wm_alert_history",
+  INSURANCE_CLAIMS: "wm_insurance_claims",
 } as const;
 
 export const COINGECKO_BASE = "https://api.coingecko.com/api/v3";

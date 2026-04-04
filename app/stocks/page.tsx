@@ -10,11 +10,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Bell, BellOff } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, Bell, BellOff, ArrowDownLeft, ArrowUpRight, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
-import type { StockHolding, Currency, StockWatchItem } from "@/lib/types";
+import type { StockHolding, Currency, StockWatchItem, StockTransaction } from "@/lib/types";
 import { FALLBACK_RATES } from "@/lib/constants";
-import { loadWatchlist, saveWatchlist } from "@/lib/store";
+import { loadWatchlist, saveWatchlist, loadStockTransactions, saveStockTransactions } from "@/lib/store";
 
 const CURRENCIES = ["EUR", "USD", "CZK", "GBP"] as const;
 
@@ -58,6 +58,21 @@ export default function StocksPage() {
   const [watchEditing, setWatchEditing] = useState<StockWatchItem | null>(null);
   const [watchForm, setWatchForm] = useState<Omit<StockWatchItem, "id">>(EMPTY_WATCH);
   const [watchDeleteConfirm, setWatchDeleteConfirm] = useState<{ id: string; ticker: string } | null>(null);
+
+  const [stockTxs, setStockTxs] = useState<StockTransaction[]>(() => loadStockTransactions());
+  const [stockTxOpen, setStockTxOpen] = useState(false);
+  const [stockTxForm, setStockTxForm] = useState<Omit<StockTransaction, "id">>({
+    ticker: "", type: "buy", amount: 0, pricePerShare: 0, totalEur: 0,
+    date: new Date().toISOString().slice(0, 10),
+  });
+  const [stockTxSearch, setStockTxSearch] = useState("");
+  const [holdingSearch, setHoldingSearch] = useState("");
+
+  const filteredStockTxs = useMemo(() => {
+    return [...stockTxs]
+      .filter((t) => !stockTxSearch || t.ticker.toLowerCase().includes(stockTxSearch.toLowerCase()))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [stockTxs, stockTxSearch]);
 
   const holdings = portfolio?.stocks ?? [];
 
@@ -116,6 +131,36 @@ export default function StocksPage() {
     await savePortfolio({ ...portfolio, stocks: holdings.filter((s) => s.id !== id) });
     setDeleteConfirm(null);
     toast.success("Odstránené.");
+  }
+
+  // Stock transaction handlers
+  function openAddStockTx(s?: StockHolding) {
+    setStockTxForm({
+      ticker: s?.ticker ?? "", type: "buy", amount: 0,
+      pricePerShare: s?.purchasePrice ?? 0, totalEur: 0,
+      date: new Date().toISOString().slice(0, 10),
+    });
+    setStockTxOpen(true);
+  }
+  function saveStockTx() {
+    if (!stockTxForm.ticker || stockTxForm.amount <= 0 || stockTxForm.pricePerShare <= 0) {
+      toast.error("Vyplň ticker, množstvo a cenu."); return;
+    }
+    const entry: StockTransaction = {
+      id: crypto.randomUUID(),
+      ...stockTxForm,
+      totalEur: toEur(stockTxForm.amount * stockTxForm.pricePerShare, "EUR", rates),
+    };
+    const updated = [...stockTxs, entry];
+    saveStockTransactions(updated);
+    setStockTxs(updated);
+    setStockTxOpen(false);
+    toast.success("Transakcia pridaná.");
+  }
+  function deleteStockTx(id: string) {
+    const updated = stockTxs.filter((t) => t.id !== id);
+    saveStockTransactions(updated);
+    setStockTxs(updated);
   }
 
   // Watchlist handlers
@@ -193,12 +238,21 @@ export default function StocksPage() {
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="holdings">Pozície ({holdings.length})</TabsTrigger>
+              <TabsTrigger value="history">
+                História
+                {stockTxs.length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{stockTxs.length}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="dividends">Dividendy</TabsTrigger>
               <TabsTrigger value="watchlist">Watchlist ({watchlist.length})</TabsTrigger>
             </TabsList>
             <div>
               <TabsContent value="holdings" className="mt-0">
                 <Button size="sm" onClick={openAdd}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
               </TabsContent>
+              <TabsContent value="history" className="mt-0">
+                <Button size="sm" onClick={() => openAddStockTx()}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
+              </TabsContent>
+              <TabsContent value="dividends" className="mt-0" />
               <TabsContent value="watchlist" className="mt-0">
                 <Button size="sm" onClick={openAddWatch}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
               </TabsContent>
@@ -215,7 +269,15 @@ export default function StocksPage() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {holdings.map((s) => {
+                {holdings.length > 4 && (
+                  <Input
+                    placeholder="Hľadaj ticker alebo názov..."
+                    value={holdingSearch}
+                    onChange={(e) => setHoldingSearch(e.target.value)}
+                    className="mb-2"
+                  />
+                )}
+                {holdings.filter((s) => !holdingSearch || s.ticker.toLowerCase().includes(holdingSearch.toLowerCase()) || s.name.toLowerCase().includes(holdingSearch.toLowerCase())).map((s) => {
                   const live = getLivePriceEur(s);
                   const valueEur = getValueEur(s);
                   const costEur = getCostEur(s);
@@ -270,6 +332,77 @@ export default function StocksPage() {
                   );
                 })}
               </div>
+            )}
+          </TabsContent>
+
+          {/* History tab */}
+          <TabsContent value="history" className="mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Input placeholder="Hľadaj ticker..." value={stockTxSearch} onChange={(e) => setStockTxSearch(e.target.value)} className="max-w-xs" />
+            </div>
+            {filteredStockTxs.length === 0 ? (
+              <Card><CardContent className="py-10 text-center text-muted-foreground">Žiadne transakcie. Pridaj nákupy a predaje akcií.</CardContent></Card>
+            ) : (
+              filteredStockTxs.map((t) => (
+                <Card key={t.id}>
+                  <CardContent className="pt-3 pb-3 flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${t.type === "buy" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}>
+                      {t.type === "buy" ? <ArrowDownLeft className="w-4 h-4 text-green-600 dark:text-green-400" /> : <ArrowUpRight className="w-4 h-4 text-red-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{t.ticker}</p>
+                        <Badge variant="outline" className="text-xs">{t.type === "buy" ? "Nákup" : "Predaj"}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {t.amount} ks · {fmt(t.pricePerShare)}/ks · {new Date(t.date).toLocaleDateString("sk-SK")}
+                        {t.fee ? ` · poplatok ${fmt(t.fee)}` : ""}
+                      </p>
+                      {t.note && <p className="text-xs text-muted-foreground">{t.note}</p>}
+                    </div>
+                    <p className={`font-bold text-sm shrink-0 ${t.type === "buy" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                      {t.type === "buy" ? "-" : "+"}{fmt(t.totalEur)}
+                    </p>
+                    <Button variant="ghost" size="icon" onClick={() => deleteStockTx(t.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+
+          {/* Dividends tab */}
+          <TabsContent value="dividends" className="mt-4 space-y-3">
+            {holdings.filter((s) => s.annualDividendYield).length === 0 ? (
+              <Card><CardContent className="py-10 text-center text-muted-foreground">Žiadne akcie s dividendovým výnosom. Nastav Annual Dividend Yield pri akciách.</CardContent></Card>
+            ) : (
+              <>
+                <Card>
+                  <CardContent className="pt-4 space-y-2">
+                    <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Ročný príjem z dividend</p>
+                    {holdings.filter((s) => s.annualDividendYield).sort((a, b) => {
+                      const aDiv = getValueEur(a) * (a.annualDividendYield! / 100);
+                      const bDiv = getValueEur(b) * (b.annualDividendYield! / 100);
+                      return bDiv - aDiv;
+                    }).map((s) => {
+                      const valueEur = getValueEur(s);
+                      const divEur = valueEur * (s.annualDividendYield! / 100);
+                      return (
+                        <div key={s.id} className="flex items-center gap-3">
+                          <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <span className="text-sm flex-1">{s.ticker} — {s.name}</span>
+                          <span className="text-xs text-muted-foreground">{s.annualDividendYield}% p.a.</span>
+                          <span className="text-sm font-semibold text-green-600 dark:text-green-400">{fmt(divEur)}/rok</span>
+                          <span className="text-xs text-muted-foreground">{fmt(divEur / 12)}/mes.</span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between font-semibold border-t pt-2 mt-1 text-sm">
+                      <span>Spolu</span>
+                      <span className="text-green-600 dark:text-green-400">{fmt(annualDividendEur)}/rok · {fmt(annualDividendEur / 12)}/mes.</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
             )}
           </TabsContent>
 
@@ -434,6 +567,51 @@ export default function StocksPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Zrušiť</Button>
             <Button onClick={handleSave}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock transaction dialog */}
+      <Dialog open={stockTxOpen} onOpenChange={setStockTxOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Pridať akciovú transakciu</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex rounded-lg overflow-hidden border">
+              <button className={`flex-1 py-2 text-sm font-medium transition-colors ${stockTxForm.type === "buy" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} onClick={() => setStockTxForm({ ...stockTxForm, type: "buy" })}>Nákup</button>
+              <button className={`flex-1 py-2 text-sm font-medium transition-colors ${stockTxForm.type === "sell" ? "bg-red-500 text-white" : "text-muted-foreground hover:bg-muted"}`} onClick={() => setStockTxForm({ ...stockTxForm, type: "sell" })}>Predaj</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Ticker (napr. AAPL)</label>
+                <Input placeholder="AAPL" value={stockTxForm.ticker} onChange={(e) => setStockTxForm({ ...stockTxForm, ticker: e.target.value.toUpperCase() })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Dátum</label>
+                <Input type="date" value={stockTxForm.date} onChange={(e) => setStockTxForm({ ...stockTxForm, date: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Počet akcií</label>
+                <Input type="number" step="0.001" min="0" value={stockTxForm.amount || ""} onChange={(e) => setStockTxForm({ ...stockTxForm, amount: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Cena/ks (EUR)</label>
+                <Input type="number" step="0.01" min="0" value={stockTxForm.pricePerShare || ""} onChange={(e) => setStockTxForm({ ...stockTxForm, pricePerShare: parseFloat(e.target.value) || 0 })} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Poplatok EUR (voliteľné)</label>
+              <Input type="number" step="0.01" min="0" value={stockTxForm.fee ?? ""} onChange={(e) => { const v = parseFloat(e.target.value); setStockTxForm({ ...stockTxForm, fee: isNaN(v) || e.target.value === "" ? undefined : v }); }} />
+            </div>
+            {stockTxForm.amount > 0 && stockTxForm.pricePerShare > 0 && (
+              <p className="text-sm text-muted-foreground">Celkom: <strong>{fmt(stockTxForm.amount * stockTxForm.pricePerShare)}</strong></p>
+            )}
+            <Input placeholder="Poznámka (voliteľné)" value={stockTxForm.note ?? ""} onChange={(e) => setStockTxForm({ ...stockTxForm, note: e.target.value })} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStockTxOpen(false)}>Zrušiť</Button>
+            <Button onClick={saveStockTx}>Uložiť</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

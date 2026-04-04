@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useRef,
 import { usePIN } from "@/hooks/usePIN";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { usePrices } from "@/hooks/usePrices";
-import { loadApiKey, loadGoals, saveGoals, loadSnapshots, saveSnapshot, loadAlerts, saveAlerts } from "@/lib/store";
+import { loadApiKey, loadGoals, saveGoals, loadSnapshots, saveSnapshot, loadAlerts, saveAlerts, loadAlertHistory, saveAlertHistory } from "@/lib/store";
 import { DEFAULT_CRYPTO_SYMBOLS } from "@/lib/constants";
 import { calcPortfolioSummary, groupByCategory } from "@/lib/portfolio-calc";
 import type {
@@ -105,7 +105,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Gather unique symbols from holdings (CoinCap matches by symbol)
   const cryptoSymbols = useMemo(
-    () => [...new Set(portfolio?.crypto.map((h) => h.symbol.toUpperCase()) ?? [])],
+    () => [...new Set(portfolio?.crypto?.map((h) => h.symbol.toUpperCase()) ?? [])],
     [portfolio]
   );
 
@@ -180,6 +180,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (hit) {
         alert.triggered = true;
         changed = true;
+        const history = loadAlertHistory();
+        saveAlertHistory([...history, {
+          id: crypto.randomUUID(),
+          alertId: alert.id,
+          label: alert.label,
+          condition: alert.condition,
+          targetPrice: alert.targetPrice,
+          priceAtTrigger: currentPrice,
+          triggeredAt: new Date().toISOString(),
+        }]);
         if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
           new Notification(`Alert: ${alert.label}`, {
             body: `Cena ${alert.condition === "above" ? "prekročila" : "klesla pod"} ${alert.targetPrice} € (aktuálne: ${currentPrice.toFixed(2)} €)`,

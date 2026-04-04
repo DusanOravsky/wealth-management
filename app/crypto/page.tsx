@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp } from "@/context/AppContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, RefreshCw, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, RefreshCw, Upload, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
-import type { CryptoHolding, Currency } from "@/lib/types";
+import { loadCryptoTransactions, saveCryptoTransactions } from "@/lib/store";
+import type { CryptoHolding, CryptoTransaction, Currency } from "@/lib/types";
 import { FALLBACK_RATES } from "@/lib/constants";
 import { fetchBinanceBalances } from "@/lib/binance";
 import { getDecryptedKey } from "@/context/AppContext";
@@ -42,6 +44,37 @@ export default function CryptoPage() {
   const csvRef = useRef<HTMLInputElement>(null);
   const holdings = portfolio?.crypto ?? [];
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+
+  const [txs, setTxs] = useState<CryptoTransaction[]>(() => loadCryptoTransactions());
+  const [txOpen, setTxOpen] = useState(false);
+  const [txForm, setTxForm] = useState<Omit<CryptoTransaction, "id">>({
+    coinId: "", symbol: "", type: "buy", amount: 0, pricePerCoin: 0, totalEur: 0,
+    date: new Date().toISOString().slice(0, 10),
+  });
+  const [txSearch, setTxSearch] = useState("");
+  const [holdingSearch, setHoldingSearch] = useState("");
+
+  // DCA: average purchase price per coinId from transactions
+  const dcaMap = useMemo(() => {
+    const map: Record<string, { avgPrice: number; totalAmount: number; totalCost: number }> = {};
+    txs.filter((t) => t.type === "buy").forEach((t) => {
+      const existing = map[t.coinId];
+      if (!existing) {
+        map[t.coinId] = { avgPrice: t.pricePerCoin, totalAmount: t.amount, totalCost: t.totalEur };
+      } else {
+        const newAmount = existing.totalAmount + t.amount;
+        const newCost = existing.totalCost + t.totalEur;
+        map[t.coinId] = { avgPrice: newCost / newAmount, totalAmount: newAmount, totalCost: newCost };
+      }
+    });
+    return map;
+  }, [txs]);
+
+  const filteredTxs = useMemo(() => {
+    return [...txs]
+      .filter((t) => !txSearch || t.symbol.toLowerCase().includes(txSearch.toLowerCase()) || t.coinId.toLowerCase().includes(txSearch.toLowerCase()))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [txs, txSearch]);
 
   const totalEur = holdings.reduce((sum, h) => {
     const price = cryptoPrices.find((p) => p.symbol === h.symbol.toUpperCase());
@@ -81,6 +114,35 @@ export default function CryptoPage() {
     await savePortfolio({ ...portfolio, crypto: holdings.filter((h) => h.id !== id) });
     setDeleteConfirm(null);
     toast.success("Odstránené.");
+  }
+
+  function openAddTx(h?: CryptoHolding) {
+    setTxForm({
+      coinId: h?.coinId ?? "", symbol: h?.symbol ?? "", type: "buy",
+      amount: 0, pricePerCoin: 0, totalEur: 0,
+      date: new Date().toISOString().slice(0, 10),
+    });
+    setTxOpen(true);
+  }
+  function saveTx() {
+    if (!txForm.coinId || !txForm.symbol || txForm.amount <= 0 || txForm.pricePerCoin <= 0) {
+      toast.error("Vyplň symbol, množstvo a cenu."); return;
+    }
+    const entry: CryptoTransaction = {
+      id: crypto.randomUUID(),
+      ...txForm,
+      totalEur: txForm.amount * txForm.pricePerCoin,
+    };
+    const updated = [...txs, entry];
+    saveCryptoTransactions(updated);
+    setTxs(updated);
+    setTxOpen(false);
+    toast.success("Transakcia pridaná.");
+  }
+  function deleteTx(id: string) {
+    const updated = txs.filter((t) => t.id !== id);
+    saveCryptoTransactions(updated);
+    setTxs(updated);
   }
 
   async function importFromBinance() {
@@ -259,56 +321,124 @@ export default function CryptoPage() {
           </Card>
         )}
 
-        {/* Holdings */}
-        {holdings.length === 0 ? (
-          <Card><CardContent className="py-12 text-center text-muted-foreground">Žiadne krypto. Pridaj manuálne alebo importuj z Binance.</CardContent></Card>
-        ) : (
-          <div className="space-y-3">
-            {holdings.map((h) => {
-              const price = cryptoPrices.find((p) => p.symbol === h.symbol.toUpperCase());
-              const valueEur = price ? price.current_price * h.amount : 0;
-              const change = price?.price_change_percentage_24h ?? 0;
-              const costEur = h.purchasePrice ? toEur(h.purchasePrice * h.amount, h.purchaseCurrency ?? "EUR", rates) : null;
-              const gainEur = costEur != null && valueEur > 0 ? valueEur - costEur : null;
-              const gainPct = costEur != null && costEur > 0 && gainEur != null ? (gainEur / costEur) * 100 : null;
-              return (
-                <Card key={h.id}>
-                  <CardContent className="pt-4 flex items-center justify-between gap-4">
+        <Tabs defaultValue="holdings">
+          <TabsList>
+            <TabsTrigger value="holdings">Pozície</TabsTrigger>
+            <TabsTrigger value="history">
+              História
+              {txs.length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{txs.length}</Badge>}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Holdings tab */}
+          <TabsContent value="holdings" className="mt-4">
+            {holdings.length === 0 ? (
+              <Card><CardContent className="py-12 text-center text-muted-foreground">Žiadne krypto. Pridaj manuálne alebo importuj z Binance.</CardContent></Card>
+            ) : (
+              <div className="space-y-3">
+                {holdings.length > 4 && (
+                  <Input
+                    placeholder="Hľadaj krypto..."
+                    value={holdingSearch}
+                    onChange={(e) => setHoldingSearch(e.target.value)}
+                    className="mb-2"
+                  />
+                )}
+                {holdings.filter((h) => !holdingSearch || h.name.toLowerCase().includes(holdingSearch.toLowerCase()) || h.symbol.toLowerCase().includes(holdingSearch.toLowerCase())).map((h) => {
+                  const price = cryptoPrices.find((p) => p.symbol === h.symbol.toUpperCase());
+                  const valueEur = price ? price.current_price * h.amount : 0;
+                  const change = price?.price_change_percentage_24h ?? 0;
+                  const costEur = h.purchasePrice ? toEur(h.purchasePrice * h.amount, h.purchaseCurrency ?? "EUR", rates) : null;
+                  const gainEur = costEur != null && valueEur > 0 ? valueEur - costEur : null;
+                  const gainPct = costEur != null && costEur > 0 && gainEur != null ? (gainEur / costEur) * 100 : null;
+                  const dca = dcaMap[h.coinId];
+                  return (
+                    <Card key={h.id}>
+                      <CardContent className="pt-4 flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{h.name}</span>
+                            <Badge variant="outline">{h.symbol.toUpperCase()}</Badge>
+                            <Badge variant="secondary" className="text-xs">{h.exchange}</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {h.amount} {h.symbol.toUpperCase()}
+                            {price && ` · ${fmt(price.current_price)}/ks`}
+                          </p>
+                          {dca && price && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              DCA: {fmt(dca.avgPrice)}/ks
+                              {price.current_price > dca.avgPrice
+                                ? <span className="text-green-600 ml-1">+{(((price.current_price - dca.avgPrice) / dca.avgPrice) * 100).toFixed(1)}% vs. DCA</span>
+                                : <span className="text-red-500 ml-1">{(((price.current_price - dca.avgPrice) / dca.avgPrice) * 100).toFixed(1)}% vs. DCA</span>}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-bold">{valueEur > 0 ? fmt(valueEur) : "—"}</p>
+                          {price && (
+                            <p className={`text-xs flex items-center justify-end gap-1 ${change >= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                              {fmtPct(change)} 24h
+                            </p>
+                          )}
+                          {gainEur != null && (
+                            <p className={`text-xs mt-0.5 ${gainEur >= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {gainEur >= 0 ? "+" : ""}{fmt(gainEur)} ({gainPct != null ? `${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}%` : ""})
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" title="Pridať transakciu" onClick={() => openAddTx(h)}><Plus className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(h)}><Pencil className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: h.id, name: `${h.name} (${h.symbol.toUpperCase()})` })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* History tab */}
+          <TabsContent value="history" className="mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Input placeholder="Hľadaj symbol..." value={txSearch} onChange={(e) => setTxSearch(e.target.value)} className="max-w-xs" />
+              <Button size="sm" onClick={() => openAddTx()}><Plus className="w-4 h-4 mr-1" />Pridať</Button>
+            </div>
+            {filteredTxs.length === 0 ? (
+              <Card><CardContent className="py-10 text-center text-muted-foreground">Žiadne transakcie. Pridaj nákupy/predaje pre sledovanie DCA.</CardContent></Card>
+            ) : (
+              filteredTxs.map((t) => (
+                <Card key={t.id}>
+                  <CardContent className="pt-3 pb-3 flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${t.type === "buy" || t.type === "transfer_in" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}>
+                      {t.type === "buy" || t.type === "transfer_in"
+                        ? <ArrowDownLeft className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        : <ArrowUpRight className="w-4 h-4 text-red-500" />}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{h.name}</span>
-                        <Badge variant="outline">{h.symbol.toUpperCase()}</Badge>
-                        <Badge variant="secondary" className="text-xs">{h.exchange}</Badge>
+                        <p className="text-sm font-medium">{t.symbol.toUpperCase()}</p>
+                        <Badge variant="outline" className="text-xs">{t.type === "buy" ? "Nákup" : t.type === "sell" ? "Predaj" : t.type === "transfer_in" ? "Príjem" : "Odchod"}</Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {h.amount} {h.symbol.toUpperCase()}
-                        {price && ` · ${fmt(price.current_price)}/ks`}
+                      <p className="text-xs text-muted-foreground">
+                        {t.amount} ks · {fmt(t.pricePerCoin)}/ks · {new Date(t.date).toLocaleDateString("sk-SK")}
+                        {t.fee ? ` · poplatok ${fmt(t.fee)}` : ""}
                       </p>
+                      {t.note && <p className="text-xs text-muted-foreground">{t.note}</p>}
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-bold">{valueEur > 0 ? fmt(valueEur) : "—"}</p>
-                      {price && (
-                        <p className={`text-xs flex items-center justify-end gap-1 ${change >= 0 ? "text-green-600" : "text-red-500"}`}>
-                          {change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          {fmtPct(change)} 24h
-                        </p>
-                      )}
-                      {gainEur != null && (
-                        <p className={`text-xs mt-0.5 ${gainEur >= 0 ? "text-green-600" : "text-red-500"}`}>
-                          {gainEur >= 0 ? "+" : ""}{fmt(gainEur)} ({gainPct != null ? `${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}%` : ""})
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(h)}><Pencil className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: h.id, name: `${h.name} (${h.symbol.toUpperCase()})` })}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                    </div>
+                    <p className={`font-bold text-sm shrink-0 ${t.type === "buy" || t.type === "transfer_in" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                      {t.type === "buy" || t.type === "transfer_in" ? "-" : "+"}{fmt(t.totalEur)}
+                    </p>
+                    <Button variant="ghost" size="icon" onClick={() => deleteTx(t.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
                   </CardContent>
                 </Card>
-              );
-            })}
-          </div>
-        )}
+              ))
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -367,6 +497,54 @@ export default function CryptoPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Zrušiť</Button>
             <Button onClick={handleSave}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction dialog */}
+      <Dialog open={txOpen} onOpenChange={setTxOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Pridať krypto transakciu</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex rounded-lg overflow-hidden border">
+              {(["buy", "sell", "transfer_in", "transfer_out"] as const).map((type) => (
+                <button key={type} className={`flex-1 py-2 text-xs font-medium transition-colors ${txForm.type === type ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} onClick={() => setTxForm({ ...txForm, type })}>
+                  {type === "buy" ? "Nákup" : type === "sell" ? "Predaj" : type === "transfer_in" ? "Príjem" : "Odchod"}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Symbol (napr. BTC)</label>
+                <Input placeholder="BTC" value={txForm.symbol} onChange={(e) => setTxForm({ ...txForm, symbol: e.target.value.toUpperCase(), coinId: e.target.value.toLowerCase() })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Dátum</label>
+                <Input type="date" value={txForm.date} onChange={(e) => setTxForm({ ...txForm, date: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Množstvo</label>
+                <Input type="number" step="0.00000001" min="0" value={txForm.amount || ""} onChange={(e) => setTxForm({ ...txForm, amount: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Cena/ks (EUR)</label>
+                <Input type="number" step="0.01" min="0" value={txForm.pricePerCoin || ""} onChange={(e) => setTxForm({ ...txForm, pricePerCoin: parseFloat(e.target.value) || 0 })} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Poplatok EUR (voliteľné)</label>
+              <Input type="number" step="0.01" min="0" value={txForm.fee ?? ""} onChange={(e) => { const v = parseFloat(e.target.value); setTxForm({ ...txForm, fee: isNaN(v) || e.target.value === "" ? undefined : v }); }} />
+            </div>
+            {txForm.amount > 0 && txForm.pricePerCoin > 0 && (
+              <p className="text-sm text-muted-foreground">Celkom: <strong>{fmt(txForm.amount * txForm.pricePerCoin)}</strong></p>
+            )}
+            <Input placeholder="Poznámka (voliteľné)" value={txForm.note ?? ""} onChange={(e) => setTxForm({ ...txForm, note: e.target.value })} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTxOpen(false)}>Zrušiť</Button>
+            <Button onClick={saveTx}>Uložiť</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

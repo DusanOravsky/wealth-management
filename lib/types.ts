@@ -86,6 +86,11 @@ export interface RealEstateHolding {
   purchaseYear?: number;
   area?: number;        // m²
   annualRent?: number;  // annual rental income in currency
+  // Mortgage / loan
+  loanAmount?: number;          // original loan amount
+  loanInterestRate?: number;    // annual % e.g. 2.5
+  loanTermYears?: number;       // total term in years
+  loanStartDate?: string;       // YYYY-MM-DD
   note?: string;
 }
 
@@ -250,6 +255,86 @@ export interface PriceAlert {
   targetPrice: number; // EUR
   triggered: boolean;
   createdAt: string;
+}
+
+// Bank transaction history
+export interface BankTransaction {
+  id: string;
+  accountId: string;
+  date: string;         // YYYY-MM-DD
+  amount: number;       // always positive
+  type: "credit" | "debit";
+  description: string;
+  note?: string;
+}
+
+// Pension contribution history
+export interface PensionContribution {
+  id: string;
+  pensionId: string;
+  date: string;         // YYYY-MM-DD
+  amount: number;
+  currency: Currency;
+  note?: string;
+}
+
+// Crypto transaction history
+export interface CryptoTransaction {
+  id: string;
+  coinId: string;
+  symbol: string;
+  type: "buy" | "sell" | "transfer_in" | "transfer_out";
+  amount: number;       // coin amount
+  pricePerCoin: number; // EUR price at time of transaction
+  totalEur: number;
+  date: string;         // YYYY-MM-DD
+  fee?: number;         // EUR
+  note?: string;
+}
+
+// Stock transaction history
+export interface StockTransaction {
+  id: string;
+  ticker: string;
+  type: "buy" | "sell";
+  amount: number;       // number of shares
+  pricePerShare: number;
+  totalEur: number;
+  date: string;         // YYYY-MM-DD
+  fee?: number;         // EUR
+  note?: string;
+}
+
+// Goal milestone
+export interface GoalMilestone {
+  id: string;
+  goalId: string;
+  name: string;
+  targetAmount?: number;
+  completedAt?: string; // ISO date when reached
+}
+
+// Alert trigger history entry
+export interface AlertHistoryEntry {
+  id: string;
+  alertId: string;
+  label: string;
+  condition: "above" | "below";
+  targetPrice: number;
+  priceAtTrigger: number;
+  triggeredAt: string; // ISO timestamp
+}
+
+// Insurance claim
+export interface InsuranceClaim {
+  id: string;
+  insuranceId: string;
+  date: string;         // YYYY-MM-DD
+  amount: number;
+  currency: Currency;
+  description: string;
+  status: "open" | "paid" | "rejected";
+  note?: string;
 }
 
 // AI Recommendation

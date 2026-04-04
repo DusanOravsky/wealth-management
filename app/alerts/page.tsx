@@ -10,9 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Bell, BellOff, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Bell, BellOff, RefreshCw, History } from "lucide-react";
 import { toast } from "sonner";
-import type { PriceAlert } from "@/lib/types";
+import type { PriceAlert, AlertHistoryEntry } from "@/lib/types";
+import { loadAlertHistory } from "@/lib/store";
 
 const EMPTY_FORM = {
   assetType: "gold" as PriceAlert["assetType"],
@@ -30,12 +31,15 @@ function fmt(n: number) {
 export default function AlertsPage() {
   const { goldPrice, silverPrice, platinumPrice, palladiumPrice, cryptoPrices, stockPrices, rates } = useApp();
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [alertHistory, setAlertHistory] = useState<AlertHistoryEntry[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>("default");
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     setAlerts(loadAlerts());
+    setAlertHistory(loadAlertHistory());
     if (typeof window !== "undefined" && "Notification" in window) {
       setNotifPerm(Notification.permission);
     }
@@ -252,6 +256,42 @@ export default function AlertsPage() {
             <CardContent className="py-12 text-center text-muted-foreground">
               Žiadne alerty. Pridaj prvý pomocou tlačidla vyššie.
             </CardContent>
+          </Card>
+        )}
+
+        {/* History */}
+        {alertHistory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <button
+                type="button"
+                className="flex items-center justify-between w-full"
+                onClick={() => setShowHistory((v) => !v)}
+              >
+                <CardTitle className="text-base flex items-center gap-2 text-muted-foreground">
+                  <History className="w-4 h-4" /> História alertov ({alertHistory.length})
+                </CardTitle>
+                <span className="text-xs text-muted-foreground">{showHistory ? "Skryť" : "Zobraziť"}</span>
+              </button>
+            </CardHeader>
+            {showHistory && (
+              <CardContent className="space-y-2">
+                {[...alertHistory].reverse().map((h) => (
+                  <div key={h.id} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-muted/50">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{h.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {h.condition === "above" ? "Prekročilo" : "Kleslo pod"} {fmt(h.targetPrice)}
+                        {" · "}cena bola {fmt(h.priceAtTrigger)}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0 mt-0.5">
+                      {new Date(h.triggeredAt).toLocaleString("sk-SK", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            )}
           </Card>
         )}
       </div>
