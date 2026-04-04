@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import type { BudgetCategory, Expense, RecurringExpense, Trip } from "@/lib/types";
 import type { ParsedReceipt } from "@/components/ReceiptScannerDialog";
+import { BudgetStats } from "@/components/modules/BudgetStats";
 
 const ReceiptScannerDialog = dynamic(
   () => import("@/components/ReceiptScannerDialog").then((m) => m.ReceiptScannerDialog),
@@ -530,6 +531,7 @@ export default function BudgetPage() {
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="stats">Štatistiky</TabsTrigger>
             <TabsTrigger value="trips">
               Výlety
               {trips.length > 0 && (
@@ -852,6 +854,11 @@ export default function BudgetPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* ── Stats tab ── */}
+          <TabsContent value="stats">
+            <BudgetStats expenses={expenses} recurring={recurring} categories={categories} />
           </TabsContent>
 
           {/* ── Trips tab ── */}
