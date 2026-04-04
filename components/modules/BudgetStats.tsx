@@ -99,7 +99,7 @@ interface Props {
 }
 
 export function BudgetStats({ expenses, recurring, categories }: Props) {
-  const today = new Date();
+  const [today] = useState(() => new Date());
   const [statsYear, setStatsYear] = useState(today.getFullYear());
   const [compareYearA, setCompareYearA] = useState(today.getFullYear());
   const [compareYearB, setCompareYearB] = useState(today.getFullYear() - 1);
@@ -116,7 +116,7 @@ export function BudgetStats({ expenses, recurring, categories }: Props) {
     return [...years].sort((a, b) => b - a);
   }, [expenses, today]);
 
-  const totalBudget = categories.reduce((s, c) => s + c.monthlyLimit, 0);
+  const totalBudget = useMemo(() => categories.reduce((s, c) => s + c.monthlyLimit, 0), [categories]);
 
   // ── Section 1: Ročný prehľad ──────────────────────────────────────────────
   const yearlyData = useMemo(() => {

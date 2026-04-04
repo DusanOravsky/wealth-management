@@ -92,7 +92,7 @@ export default function RealEstatePage() {
 
   const totalValueEur = holdings.reduce((sum, r) => sum + toEur(r.estimatedValue, r.currency, rates), 0);
   const totalDebtEur = holdings.reduce((sum, r) => {
-    if (!r.loanAmount || !r.loanInterestRate || !r.loanTermYears || !r.loanStartDate) return sum;
+    if (!r.loanAmount || r.loanInterestRate === undefined || !r.loanTermYears || !r.loanStartDate) return sum;
     return sum + toEur(calcRemainingLoan(r.loanAmount, r.loanInterestRate, r.loanTermYears, r.loanStartDate), r.currency, rates);
   }, 0);
   const totalEquityEur = totalValueEur - totalDebtEur;

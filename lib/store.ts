@@ -303,6 +303,31 @@ export function clearSession(): void {
   try { sessionStorage.removeItem(SESSION_KEY); } catch { /* private mode */ }
 }
 
+// ---------- Planning settings ----------
+
+const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
+  cash: 5, bank: 10, pension: 10, commodity: 15, crypto: 20, stock: 25, realestate: 15,
+};
+const DEFAULT_FIRE_SETTINGS = { monthlyExpenses: 2000, monthlyContrib: 500, annualReturn: 7, swr: 4 };
+
+export function loadTargetAllocation(): Record<string, number> {
+  const raw = rawGet(STORE_KEYS.TARGET_ALLOCATION);
+  if (!raw) return DEFAULT_TARGET_ALLOCATION;
+  try { return { ...DEFAULT_TARGET_ALLOCATION, ...JSON.parse(raw) }; } catch { return DEFAULT_TARGET_ALLOCATION; }
+}
+export function saveTargetAllocation(data: Record<string, number>): void {
+  rawSet(STORE_KEYS.TARGET_ALLOCATION, JSON.stringify(data));
+}
+
+export function loadFireSettings(): { monthlyExpenses: number; monthlyContrib: number; annualReturn: number; swr: number } {
+  const raw = rawGet(STORE_KEYS.FIRE_SETTINGS);
+  if (!raw) return DEFAULT_FIRE_SETTINGS;
+  try { return { ...DEFAULT_FIRE_SETTINGS, ...JSON.parse(raw) }; } catch { return DEFAULT_FIRE_SETTINGS; }
+}
+export function saveFireSettings(data: { monthlyExpenses: number; monthlyContrib: number; annualReturn: number; swr: number }): void {
+  rawSet(STORE_KEYS.FIRE_SETTINGS, JSON.stringify(data));
+}
+
 // ---------- Merge helpers ----------
 
 function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
@@ -377,10 +402,15 @@ export async function exportBackup(pin: string, salt: string): Promise<string> {
 }
 
 export async function importBackup(json: string, pin: string, salt: string): Promise<void> {
-  const data = JSON.parse(json);
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    throw new Error("Neplatný formát zálohy — JSON sa nedá načítať.");
+  }
   if (!data || typeof data !== "object") throw new Error("Neplatný formát zálohy.");
   if (!data.version || typeof data.version !== "number") throw new Error("Chýba verzia zálohy.");
-  if (data.portfolio && (typeof data.portfolio !== "object" || !Array.isArray(data.portfolio.commodities)))
+  if (data.portfolio && (typeof data.portfolio !== "object" || !Array.isArray((data.portfolio as Record<string, unknown>).commodities)))
     throw new Error("Poškodené dáta portfólia.");
   if (data.portfolio) await mergeAndSavePortfolio(data.portfolio as PortfolioData, pin, salt);
   if (data.goals) saveGoals(mergeById(loadGoals(), data.goals as FinancialGoal[]));
@@ -401,16 +431,17 @@ export async function importBackup(json: string, pin: string, salt: string): Pro
   // Merge non-sensitive settings (preserve PIN/salt/API keys from current device)
   if (data.settings) {
     const current = loadSettings();
+    const s = data.settings as Partial<AppSettings>;
     if (current) {
       saveSettings({
         ...current,
-        displayCurrency: data.settings.displayCurrency ?? current.displayCurrency,
-        baseCurrency: data.settings.baseCurrency ?? current.baseCurrency,
-        autoLockMinutes: data.settings.autoLockMinutes ?? current.autoLockMinutes,
-        birthYear: data.settings.birthYear ?? current.birthYear,
-        retirementAge: data.settings.retirementAge ?? current.retirementAge,
-        monthlyIncome: data.settings.monthlyIncome ?? current.monthlyIncome,
-        googleClientId: data.settings.googleClientId ?? current.googleClientId,
+        displayCurrency: s.displayCurrency ?? current.displayCurrency,
+        baseCurrency: s.baseCurrency ?? current.baseCurrency,
+        autoLockMinutes: s.autoLockMinutes ?? current.autoLockMinutes,
+        birthYear: s.birthYear ?? current.birthYear,
+        retirementAge: s.retirementAge ?? current.retirementAge,
+        monthlyIncome: s.monthlyIncome ?? current.monthlyIncome,
+        googleClientId: s.googleClientId ?? current.googleClientId,
       });
     }
   }

@@ -13,33 +13,7 @@ import { Pencil, Check, X } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { STORE_KEYS } from "@/lib/constants";
-
-const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
-  cash: 5,
-  bank: 10,
-  pension: 10,
-  commodity: 15,
-  crypto: 20,
-  stock: 25,
-  realestate: 15,
-};
-
-function loadTargetAllocation(): Record<string, number> {
-  if (typeof window === "undefined") return DEFAULT_TARGET_ALLOCATION;
-  try {
-    const raw = localStorage.getItem(STORE_KEYS.TARGET_ALLOCATION);
-    return raw ? { ...DEFAULT_TARGET_ALLOCATION, ...JSON.parse(raw) } : DEFAULT_TARGET_ALLOCATION;
-  } catch { return DEFAULT_TARGET_ALLOCATION; }
-}
-
-function loadFireSettings() {
-  if (typeof window === "undefined") return { monthlyExpenses: 2000, monthlyContrib: 500, annualReturn: 7, swr: 4 };
-  try {
-    const raw = localStorage.getItem(STORE_KEYS.FIRE_SETTINGS);
-    return raw ? JSON.parse(raw) : { monthlyExpenses: 2000, monthlyContrib: 500, annualReturn: 7, swr: 4 };
-  } catch { return { monthlyExpenses: 2000, monthlyContrib: 500, annualReturn: 7, swr: 4 }; }
-}
+import { loadTargetAllocation, saveTargetAllocation, loadFireSettings, saveFireSettings } from "@/lib/store";
 
 const CATEGORY_LABELS: Record<string, string> = {
   commodity: "Komodity", cash: "Hotovosť", pension: "II. Pilier", bank: "Banka", crypto: "Krypto",
@@ -116,7 +90,7 @@ export default function PlanningPage() {
 
   function saveAllocation() {
     setTargetAllocation(allocationDraft);
-    localStorage.setItem(STORE_KEYS.TARGET_ALLOCATION, JSON.stringify(allocationDraft));
+    saveTargetAllocation(allocationDraft);
     setEditingAllocation(false);
   }
 
@@ -127,7 +101,7 @@ export default function PlanningPage() {
   const [swr, setSwr] = useState<number>(() => loadFireSettings().swr);
 
   useEffect(() => {
-    localStorage.setItem(STORE_KEYS.FIRE_SETTINGS, JSON.stringify({ monthlyExpenses, monthlyContrib, annualReturn, swr }));
+    saveFireSettings({ monthlyExpenses, monthlyContrib, annualReturn, swr });
   }, [monthlyExpenses, monthlyContrib, annualReturn, swr]);
 
   const fireNumber = useMemo(
