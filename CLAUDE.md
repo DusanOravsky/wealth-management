@@ -154,10 +154,19 @@ See `lib/types.ts` for full definitions.
 - `BankAccount`: { id, bank, name, iban?, balance, currency, note? }
 - `CryptoHolding`: { id, coinId, symbol, name, amount, exchange, purchasePrice?, purchaseCurrency?, note? }
 - `StockHolding`: { id, ticker, name, amount, purchasePrice, currentPrice?, currency, exchange?, annualDividendYield?, note? }
-- `RealEstateHolding`: { id, name, type, estimatedValue, currency, purchasePrice?, purchaseYear?, area?, note? }
+- `RealEstateHolding`: { id, name, type, estimatedValue, currency, purchasePrice?, purchaseYear?, area?, annualRent?, loanAmount?, loanInterestRate?, loanTermYears?, loanStartDate?, note? }
 - `StockWatchItem`: { id, ticker, name, targetPrice?, note? }
 - `PriceAlert`: { id, assetType: "gold"|"silver"|"platinum"|"palladium"|"crypto"|"stock", coinId?, ticker?, condition, targetPrice, triggered, createdAt }
 - `AppSettings`: { pinHash, salt, baseCurrency, displayCurrency?, autoLockMinutes?, birthYear?, retirementAge?, monthlyIncome?, binanceKey?, binanceSecret?, coingeckoKey?, claudeKey? }
+- `BankTransaction`: { id, accountId, date, amount, type: "credit"|"debit", description, note? }
+- `PensionContribution`: { id, pensionId, date, amount, currency, note? }
+- `CryptoTransaction`: { id, coinId, symbol, type: "buy"|"sell"|"transfer_in"|"transfer_out", amount, pricePerCoin, totalEur, date, fee?, note? }
+- `StockTransaction`: { id, ticker, type: "buy"|"sell", amount, pricePerShare, totalEur, date, fee?, note? }
+- `GoalMilestone`: { id, goalId, name, targetAmount?, completedAt? }
+- `AlertHistoryEntry`: { id, alertId, label, condition, targetPrice, priceAtTrigger, triggeredAt }
+- `InsuranceClaim`: { id, insuranceId, date, amount, currency, description, status: "open"|"paid"|"rejected", note? }
+- `Trip`: { id, name, icon, dateFrom, dateTo, note? }
+- `Expense`: { ... tripId? } (tripId optional, links to Trip)
 
 ---
 
@@ -165,7 +174,10 @@ See `lib/types.ts` for full definitions.
 
 ### Dashboard
 - Hero total value card, allocation bars, stacked area chart (toggle: total / by category)
-- Chart range: 7d / 30d / 90d / 1r
+- Chart range: 30d / 90d / 1r; category filter chips on asset list
+- Upcoming payments widget (7-day horizon from recurring expenses)
+- Goals widget: goals with deadline ≤30 days or progress ≥80%
+- Insurance expiry widget: policies expiring within 60 days
 
 ### Commodities
 - Per-lot tracking with `purchaseDate` and `purchaseTotalEur`
@@ -176,14 +188,34 @@ See `lib/types.ts` for full definitions.
 ### Crypto
 - P&L summary: value / invested / gain-loss cards
 - Per-holding gain/loss with purchase price in any currency
+- Tabs: Pozície | História
+- DCA price calculated from buy transactions (`dcaMap` useMemo per coinId)
+- Transaction types: buy / sell / transfer_in / transfer_out
 
 ### Stocks
 - P&L + annual dividend income summary (4 cards)
-- Tabs: Pozície (holdings) | Watchlist
+- Tabs: Pozície | História | Dividendy | Watchlist
+- Dividendy: sorted by annual EUR income, shows yield%/annual/monthly
 - Watchlist: target price, live price, % to target
+- Search filter on holdings (shown when >4 items)
+
+### Bank
+- Tabs: Účty | Transakcie
+- Per-account credit/debit summary
+- Transaction history: search + filter by account
+
+### Pension
+- Tabs: Fondy | Príspevky
+- 3 summary cards: total value / total contributed / growth
+- Contributions: yearly breakdown chips, per-fund filter
+
+### Real Estate
+- Mortgage tracker: remaining loan, equity, LTV%, monthly payment, progress bar
+- Calculates remaining loan via standard amortization formula
+- Rental yield % and total gain % on each holding
 
 ### Budget
-- Tabs: Prehľad | Výdavky | Pravidelné | Kategórie
+- Tabs: Prehľad | Výdavky | Pravidelné | Kategórie | Výlety | Štatistiky
 - MoM comparison card, budget forecast banner
 - CSV import (smart column detection: SK/EN/DE headers) + CSV export
 - Emoji picker (80+ emoji) for categories
@@ -192,10 +224,24 @@ See `lib/types.ts` for full definitions.
   - **QR kód**: square overlay + horizontal green scan line — for e-Kasa, JSON QR
   - `@zxing/browser` `BrowserMultiFormatReader` scans full frame regardless of overlay mode
   - `IScannerControls.stop()` used to release camera stream on close/scan
+- Výlety tab: trip CRUD, expandable trip cards with linked expenses
+- Trip badge (MapPin icon) on expense cards, trip selector in add expense dialog
+- Štatistiky tab: `BudgetStats` component with 5 sections:
+  1. Ročný prehľad: 12-month bar chart + year nav + 4 summary cards
+  2. Kategórie za obdobie: horizontal bars + pie chart + period selector
+  3. Ročné porovnanie: grouped bar chart, year A vs B selectors, delta card
+  4. Priemer na mesiac: per-category averages vs limits
+  5. Top 10 výdavkov: most expensive individual expenses with period filter
+
+### Goals
+- Per-goal milestone tracking (add/complete/delete) with completion dates
+- Milestone counter badge (e.g. "2/4") on each goal card
+- Expandable milestones section with check/uncheck toggle
 
 ### Insurance
 - CSS timeline card (horizontal bars per policy, color-coded by expiry)
 - 42-day Slovak law cancellation notice warning
+- Claims tracking per policy: add/delete claims with status open/paid/rejected
 
 ### Planning
 - Tabs: Alokácia | FIRE kalkulátor | II. Pilier
@@ -207,6 +253,7 @@ See `lib/types.ts` for full definitions.
 ### Alerts
 - Asset types: gold, silver, platinum, palladium, crypto, stocks
 - Browser Notification API, checked every 5 min in AppContext
+- Alert history: `AlertHistoryEntry` logged on trigger, collapsible history section on page
 
 ### Settings
 - Theme toggle (light / system / dark) via next-themes

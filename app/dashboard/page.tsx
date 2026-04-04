@@ -12,11 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard, CalendarClock } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard, CalendarClock, Target, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
-import { loadRecurringExpenses } from "@/lib/store";
-import type { RecurringExpense } from "@/lib/types";
+import { loadRecurringExpenses, loadInsurance, loadGoals } from "@/lib/store";
+import type { RecurringExpense, Insurance, FinancialGoal } from "@/lib/types";
 
 const CATEGORY_COLORS: Record<string, string> = {
   commodity: "#fbbf24",
@@ -172,6 +172,32 @@ export default function DashboardPage() {
   const animatedTotal = useCountUp(totalRaw);
   const isLoading = (portfolioLoading || pricesLoading) && !summary;
   const [upcomingPayments] = useState(() => getUpcomingRecurring(7));
+  const [dashGoals] = useState<FinancialGoal[]>(() => typeof window !== "undefined" ? loadGoals() : []);
+  const [dashInsurance] = useState<Insurance[]>(() => typeof window !== "undefined" ? loadInsurance() : []);
+
+  // Goals with deadlines in next 30 days or >80% progress
+  const groupedByCategory = summary ? groupByCategory(summary.assets) : {};
+  const notableGoals = dashGoals
+    .map((g) => {
+      const rate = rates[g.currency] ?? FALLBACK_RATES[g.currency] ?? 1;
+      let currentEur = 0;
+      if (g.linkedCategory) currentEur = groupedByCategory[g.linkedCategory] ?? 0;
+      else if (g.currentAmount != null) currentEur = g.currentAmount / rate;
+      else currentEur = summary?.totalEur ?? 0;
+      const progress = Math.min(100, ((currentEur * rate) / g.targetAmount) * 100);
+      const days = g.deadline ? Math.ceil((new Date(g.deadline).getTime() - Date.now()) / 86400000) : null;
+      return { ...g, progress, days };
+    })
+    .filter((g) => (g.days !== null && g.days >= 0 && g.days <= 30) || g.progress >= 80)
+    .sort((a, b) => (a.days ?? 999) - (b.days ?? 999))
+    .slice(0, 3);
+
+  // Insurance expiring in next 60 days
+  const expiringInsurance = dashInsurance
+    .map((ins) => ({ ...ins, days: Math.ceil((new Date(ins.endDate).getTime() - Date.now()) / 86400000) }))
+    .filter((ins) => ins.days >= 0 && ins.days <= 60)
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 3);
 
   if (isLoading) {
     return (
@@ -580,6 +606,82 @@ export default function DashboardPage() {
                       {r.daysLeft === 0 ? "Dnes" : `${r.daysLeft}d`}
                     </Badge>
                     <span className="text-sm font-semibold">{r.amount.toLocaleString("sk-SK")} {r.currency}</span>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Goals progress widget */}
+        {notableGoals.length > 0 && (
+          <Card className="shadow-sm">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Target className="w-4 h-4 text-muted-foreground" />
+                  Ciele
+                </CardTitle>
+                <Link href="/goals" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Všetky →
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {notableGoals.map((g) => (
+                <div key={g.id}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: g.color ?? "#6366f1" }} />
+                      <span className="text-sm truncate">{g.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {g.days !== null && g.days <= 30 && (
+                        <Badge variant={g.days <= 7 ? "destructive" : "secondary"} className="text-xs">
+                          {g.days === 0 ? "Dnes!" : `${g.days}d`}
+                        </Badge>
+                      )}
+                      <span className="text-xs font-semibold tabular-nums">
+                        {g.progress.toFixed(0)}%
+                        {g.progress >= 100 && " 🎉"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5">
+                    <div
+                      className="h-1.5 rounded-full transition-all"
+                      style={{ width: `${g.progress}%`, background: g.color ?? "#6366f1" }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Insurance expiry widget */}
+        {expiringInsurance.length > 0 && (
+          <Card className="shadow-sm border-orange-200 dark:border-orange-800">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-orange-500" />
+                  Poistenie — blíži sa koniec
+                </CardTitle>
+                <Link href="/insurance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Všetky →
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {expiringInsurance.map((ins) => (
+                <div key={ins.id} className="flex items-center justify-between gap-3">
+                  <span className="text-sm truncate min-w-0">{ins.name}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground">{new Date(ins.endDate).toLocaleDateString("sk-SK")}</span>
+                    <Badge variant={ins.days <= 42 ? "destructive" : "secondary"} className="text-xs">
+                      {ins.days === 0 ? "Dnes!" : `${ins.days}d`}
+                    </Badge>
                   </div>
                 </div>
               ))}

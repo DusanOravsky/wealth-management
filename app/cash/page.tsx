@@ -83,7 +83,11 @@ export default function CashPage() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-bold">{fmt(c.amount, c.currency)}</p>
-                    <p className="text-xs text-muted-foreground">{CURRENCY_SYMBOLS[c.currency] ?? c.currency}</p>
+                    {c.currency !== "EUR" && (
+                      <p className="text-xs text-muted-foreground">
+                        ≈ {fmt(c.amount / (rates[c.currency] ?? FALLBACK_RATES[c.currency] ?? 1))}
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="w-4 h-4" /></Button>
