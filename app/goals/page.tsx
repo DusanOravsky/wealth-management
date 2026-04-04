@@ -156,7 +156,7 @@ export default function GoalsPage() {
   }
 
   function progressSource(goal: FinancialGoal): string {
-    if (goal.linkedCategory) return `z kategórie "${CATEGORY_LABELS[goal.linkedCategory]}"`;
+    if (goal.linkedCategory) return `z kategórie "${CATEGORY_LABELS[goal.linkedCategory] ?? goal.linkedCategory}"`;
     if (goal.currentAmount != null) return "manuálna hodnota";
     return "z celého portfólia";
   }
