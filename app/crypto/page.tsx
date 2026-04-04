@@ -64,7 +64,7 @@ export default function CryptoPage() {
       } else {
         const newAmount = existing.totalAmount + t.amount;
         const newCost = existing.totalCost + t.totalEur;
-        map[t.coinId] = { avgPrice: newCost / newAmount, totalAmount: newAmount, totalCost: newCost };
+        map[t.coinId] = { avgPrice: newAmount > 0 ? newCost / newAmount : 0, totalAmount: newAmount, totalCost: newCost };
       }
     });
     return map;
@@ -365,7 +365,7 @@ export default function CryptoPage() {
                             {h.amount} {h.symbol.toUpperCase()}
                             {price && ` · ${fmt(price.current_price)}/ks`}
                           </p>
-                          {dca && price && (
+                          {dca && price && dca.avgPrice > 0 && (
                             <p className="text-xs text-muted-foreground mt-0.5">
                               DCA: {fmt(dca.avgPrice)}/ks
                               {price.current_price > dca.avgPrice
