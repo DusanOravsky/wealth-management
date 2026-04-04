@@ -282,6 +282,12 @@ See `lib/types.ts` for full definitions.
 - **Non-null assertions on `.find()`:** Never use `!` on `.find()` result; use optional chaining + nullish coalescing (`?.current_price ?? 0`)
 - **`scanline-h` CSS animation:** defined in `globals.css` — horizontal scan line for barcode mode
 - **`scanline` CSS animation:** defined in `globals.css` — vertical scan line for QR mode
+- **Crypto DCA map:** `dcaMap` uses `newAmount > 0 ? newCost / newAmount : 0` — guard against NaN when all sells cancel out buys; DCA % display skips render when `avgPrice <= 0`
+- **CATEGORY_LABELS lookup:** Always use `CATEGORY_LABELS[key] ?? key` — raw key as fallback prevents rendering `"undefined"` if data is migrated/corrupted
+- **`!value` vs `value === undefined`:** Use explicit `=== undefined` for numeric fields that can legitimately be `0` (e.g. `loanInterestRate`) — `!0` is `true` and silently skips the calculation
+- **`new Date()` in render body:** Move to `useState(() => new Date())` — `new Date()` as useMemo dep causes cache miss on every render
+- **FIRE `calcMonthsToFIRE`:** Already guards `r <= 0` (linear fallback). Whole-month amortization in `monthsElapsed()` is intentional — mortgage payments are monthly, not continuous
+- **`importBackup` / `importQRPayload`:** JSON.parse wrapped in try/catch; data typed as `Record<string, unknown>` — never trust raw JSON from clipboard/QR
 
 ---
 
