@@ -1,6 +1,6 @@
 import type {
   AppSettings, PortfolioData, PortfolioSnapshot, FinancialGoal,
-  PriceAlert, Insurance, BudgetCategory, Expense, RecurringExpense, Recommendation, StockWatchItem,
+  PriceAlert, Insurance, BudgetCategory, Expense, RecurringExpense, Recommendation, StockWatchItem, Trip,
 } from "./types";
 import { STORE_KEYS, MAX_SNAPSHOTS } from "./constants";
 import { encrypt, decrypt } from "./crypto";
@@ -188,6 +188,18 @@ export function saveWatchlist(items: StockWatchItem[]): void {
   rawSet(STORE_KEYS.WATCHLIST, JSON.stringify(items));
 }
 
+// ---------- Trips (plain JSON) ----------
+
+export function loadTrips(): Trip[] {
+  const raw = rawGet(STORE_KEYS.TRIPS);
+  if (!raw) return [];
+  try { return JSON.parse(raw) as Trip[]; } catch { return []; }
+}
+
+export function saveTrips(items: Trip[]): void {
+  rawSet(STORE_KEYS.TRIPS, JSON.stringify(items));
+}
+
 // ---------- Session (sessionStorage + in-memory fallback) ----------
 // sessionStorage survives page reloads within the same tab (e.g. hard navigation
 // in static-export PWA on mobile), but is cleared when the tab is closed.
@@ -210,6 +222,41 @@ export function getSession(): string | null {
 export function clearSession(): void {
   _sessionPin = null;
   try { sessionStorage.removeItem(SESSION_KEY); } catch { /* private mode */ }
+}
+
+// ---------- Merge helpers ----------
+
+function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  const map = new Map<string, T>();
+  existing.forEach(item => map.set(item.id, item));
+  incoming.forEach(item => map.set(item.id, item)); // incoming wins on conflict
+  return Array.from(map.values());
+}
+
+function mergeSnapshots(existing: PortfolioSnapshot[], incoming: PortfolioSnapshot[]): PortfolioSnapshot[] {
+  const map = new Map<string, PortfolioSnapshot>();
+  existing.forEach(s => map.set(s.date, s));
+  incoming.forEach(s => map.set(s.date, s));
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date)).slice(-MAX_SNAPSHOTS);
+}
+
+async function mergeAndSavePortfolio(incoming: PortfolioData, pin: string, salt: string): Promise<void> {
+  const existing = await loadPortfolio(pin, salt);
+  if (!existing) {
+    await savePortfolio(incoming, pin, salt);
+    return;
+  }
+  const merged: PortfolioData = {
+    commodities: mergeById(existing.commodities, incoming.commodities),
+    cash: mergeById(existing.cash, incoming.cash),
+    pension: mergeById(existing.pension, incoming.pension),
+    bankAccounts: mergeById(existing.bankAccounts, incoming.bankAccounts),
+    crypto: mergeById(existing.crypto, incoming.crypto),
+    stocks: mergeById(existing.stocks, incoming.stocks),
+    realestate: mergeById(existing.realestate, incoming.realestate),
+    updatedAt: incoming.updatedAt > existing.updatedAt ? incoming.updatedAt : existing.updatedAt,
+  };
+  await savePortfolio(merged, pin, salt);
 }
 
 // ---------- Export / Import ----------
@@ -239,6 +286,7 @@ export async function exportBackup(pin: string, salt: string): Promise<string> {
     budgetCategories: loadBudgetCategories(),
     expenses: loadExpenses(),
     recurringExpenses: loadRecurringExpenses(),
+    trips: loadTrips(),
   }, null, 2);
 }
 
@@ -248,14 +296,15 @@ export async function importBackup(json: string, pin: string, salt: string): Pro
   if (!data.version || typeof data.version !== "number") throw new Error("Chýba verzia zálohy.");
   if (data.portfolio && (typeof data.portfolio !== "object" || !Array.isArray(data.portfolio.commodities)))
     throw new Error("Poškodené dáta portfólia.");
-  if (data.portfolio) await savePortfolio(data.portfolio as PortfolioData, pin, salt);
-  if (data.goals) saveGoals(data.goals as FinancialGoal[]);
-  if (data.snapshots) rawSet(STORE_KEYS.SNAPSHOTS, JSON.stringify(data.snapshots));
-  if (data.alerts) saveAlerts(data.alerts as PriceAlert[]);
-  if (data.insurance) saveInsurance(data.insurance as Insurance[]);
-  if (data.budgetCategories) saveBudgetCategories(data.budgetCategories as BudgetCategory[]);
-  if (data.expenses) saveExpenses(data.expenses as Expense[]);
-  if (data.recurringExpenses) saveRecurringExpenses(data.recurringExpenses as RecurringExpense[]);
+  if (data.portfolio) await mergeAndSavePortfolio(data.portfolio as PortfolioData, pin, salt);
+  if (data.goals) saveGoals(mergeById(loadGoals(), data.goals as FinancialGoal[]));
+  if (data.snapshots) rawSet(STORE_KEYS.SNAPSHOTS, JSON.stringify(mergeSnapshots(loadSnapshots(), data.snapshots as PortfolioSnapshot[])));
+  if (data.alerts) saveAlerts(mergeById(loadAlerts(), data.alerts as PriceAlert[]));
+  if (data.insurance) saveInsurance(mergeById(loadInsurance(), data.insurance as Insurance[]));
+  if (data.budgetCategories) saveBudgetCategories(mergeById(loadBudgetCategories(), data.budgetCategories as BudgetCategory[]));
+  if (data.expenses) saveExpenses(mergeById(loadExpenses(), data.expenses as Expense[]));
+  if (data.recurringExpenses) saveRecurringExpenses(mergeById(loadRecurringExpenses(), data.recurringExpenses as RecurringExpense[]));
+  if (data.trips) saveTrips(mergeById(loadTrips(), data.trips as Trip[]));
   // Merge non-sensitive settings (preserve PIN/salt/API keys from current device)
   if (data.settings) {
     const current = loadSettings();
@@ -314,7 +363,7 @@ export async function exportQRPayload(pin: string, salt: string): Promise<string
   const portfolio = await loadPortfolio(pin, salt);
   const settings = loadSettings();
   const payload = {
-    v: 2,
+    v: 3,
     portfolio,
     s: settings ? {
       displayCurrency: settings.displayCurrency,
@@ -322,6 +371,13 @@ export async function exportQRPayload(pin: string, salt: string): Promise<string
       retirementAge: settings.retirementAge,
       monthlyIncome: settings.monthlyIncome,
     } : undefined,
+    goals: loadGoals(),
+    alerts: loadAlerts(),
+    ins: loadInsurance(),
+    cats: loadBudgetCategories(),
+    exp: loadExpenses(),
+    rec: loadRecurringExpenses(),
+    trips: loadTrips(),
   };
   const json = JSON.stringify(payload);
   try {
@@ -349,11 +405,18 @@ export async function importQRPayload(encoded: string, pin: string, salt: string
     json = await decompressB64(encoded);
   }
   const data = JSON.parse(json);
-  if (data.portfolio) await savePortfolio(data.portfolio as PortfolioData, pin, salt);
+  if (data.portfolio) await mergeAndSavePortfolio(data.portfolio as PortfolioData, pin, salt);
   if (data.s) {
     const current = loadSettings();
     if (current) saveSettings({ ...current, ...data.s });
   }
+  if (data.goals) saveGoals(mergeById(loadGoals(), data.goals as FinancialGoal[]));
+  if (data.alerts) saveAlerts(mergeById(loadAlerts(), data.alerts as PriceAlert[]));
+  if (data.ins) saveInsurance(mergeById(loadInsurance(), data.ins as Insurance[]));
+  if (data.cats) saveBudgetCategories(mergeById(loadBudgetCategories(), data.cats as BudgetCategory[]));
+  if (data.exp) saveExpenses(mergeById(loadExpenses(), data.exp as Expense[]));
+  if (data.rec) saveRecurringExpenses(mergeById(loadRecurringExpenses(), data.rec as RecurringExpense[]));
+  if (data.trips) saveTrips(mergeById(loadTrips(), data.trips as Trip[]));
 }
 
 // ---------- Full wipe ----------

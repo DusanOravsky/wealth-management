@@ -186,6 +186,16 @@ export interface BudgetCategory {
   icon: string; // emoji
 }
 
+// Trip / event (groups expenses across months)
+export interface Trip {
+  id: string;
+  name: string;
+  icon: string; // emoji
+  dateFrom: string; // YYYY-MM-DD
+  dateTo: string;   // YYYY-MM-DD
+  note?: string;
+}
+
 // Expense entry
 export interface Expense {
   id: string;
@@ -194,6 +204,7 @@ export interface Expense {
   currency: Currency;
   date: string; // YYYY-MM-DD
   description: string;
+  tripId?: string;
   note?: string;
 }
 

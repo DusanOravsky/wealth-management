@@ -7,6 +7,7 @@ import {
   loadBudgetCategories, saveBudgetCategories,
   loadExpenses, saveExpenses,
   loadRecurringExpenses, saveRecurringExpenses,
+  loadTrips, saveTrips,
 } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload, QrCode } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload, QrCode, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
-import type { BudgetCategory, Expense, RecurringExpense } from "@/lib/types";
+import type { BudgetCategory, Expense, RecurringExpense, Trip } from "@/lib/types";
 import type { ParsedReceipt } from "@/components/ReceiptScannerDialog";
 
 const ReceiptScannerDialog = dynamic(
@@ -110,6 +111,7 @@ export default function BudgetPage() {
   });
   const [expenses, setExpenses] = useState<Expense[]>(() => loadExpenses());
   const [recurring, setRecurring] = useState<RecurringExpense[]>(() => loadRecurringExpenses());
+  const [trips, setTrips] = useState<Trip[]>(() => loadTrips());
 
   // QR scanner
   const [scanOpen, setScanOpen] = useState(false);
@@ -117,7 +119,13 @@ export default function BudgetPage() {
   // Expense dialog
   const [expOpen, setExpOpen] = useState(false);
   const [editingExp, setEditingExp] = useState<Expense | null>(null);
-  const [expForm, setExpForm] = useState({ categoryId: "", amount: 0, date: today.toISOString().slice(0, 10), description: "" });
+  const [expForm, setExpForm] = useState({ categoryId: "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: "" });
+
+  // Trip dialog
+  const [tripOpen, setTripOpen] = useState(false);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [tripForm, setTripForm] = useState({ name: "", icon: "✈️", dateFrom: today.toISOString().slice(0, 10), dateTo: today.toISOString().slice(0, 10), note: "" });
+  const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
 
   // Category dialog
   const [catOpen, setCatOpen] = useState(false);
@@ -248,9 +256,9 @@ export default function BudgetPage() {
   }
 
   // ── Expense CRUD ──
-  function openAddExp() {
+  function openAddExp(presetTripId?: string) {
     setEditingExp(null);
-    setExpForm({ categoryId: categories[0]?.id ?? "", amount: 0, date: today.toISOString().slice(0, 10), description: "" });
+    setExpForm({ categoryId: categories[0]?.id ?? "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: presetTripId ?? "" });
     setExpOpen(true);
   }
   function handleReceiptScanned(receipt: ParsedReceipt) {
@@ -264,7 +272,7 @@ export default function BudgetPage() {
   }
   function openEditExp(e: Expense) {
     setEditingExp(e);
-    setExpForm({ categoryId: e.categoryId, amount: e.amount, date: e.date, description: e.description });
+    setExpForm({ categoryId: e.categoryId, amount: e.amount, date: e.date, description: e.description, tripId: e.tripId ?? "" });
     setExpOpen(true);
   }
   function saveExp() {
@@ -278,6 +286,7 @@ export default function BudgetPage() {
       currency: "EUR",
       date: expForm.date,
       description: expForm.description,
+      ...(expForm.tripId ? { tripId: expForm.tripId } : {}),
     };
     const updated = editingExp
       ? expenses.map((e) => e.id === editingExp.id ? entry : e)
@@ -292,6 +301,41 @@ export default function BudgetPage() {
     saveExpenses(updated);
     setExpenses(updated);
     toast.success("Výdavok odstránený.");
+  }
+
+  // ── Trip CRUD ──
+  function openAddTrip() {
+    setEditingTrip(null);
+    setTripForm({ name: "", icon: "✈️", dateFrom: today.toISOString().slice(0, 10), dateTo: today.toISOString().slice(0, 10), note: "" });
+    setTripOpen(true);
+  }
+  function openEditTrip(t: Trip) {
+    setEditingTrip(t);
+    setTripForm({ name: t.name, icon: t.icon, dateFrom: t.dateFrom, dateTo: t.dateTo, note: t.note ?? "" });
+    setTripOpen(true);
+  }
+  function saveTrip() {
+    if (!tripForm.name || !tripForm.dateFrom || !tripForm.dateTo) {
+      toast.error("Vyplň názov a dátumy."); return;
+    }
+    const entry: Trip = { id: editingTrip?.id ?? crypto.randomUUID(), ...tripForm };
+    const updated = editingTrip
+      ? trips.map((t) => t.id === editingTrip.id ? entry : t)
+      : [...trips, entry];
+    saveTrips(updated);
+    setTrips(updated);
+    setTripOpen(false);
+    toast.success(editingTrip ? "Výlet upravený." : "Výlet pridaný.");
+  }
+  function deleteTrip(id: string) {
+    const updated = trips.filter((t) => t.id !== id);
+    saveTrips(updated);
+    setTrips(updated);
+    // Remove tripId from expenses belonging to this trip
+    const updatedExp = expenses.map((e) => e.tripId === id ? { ...e, tripId: undefined } : e);
+    saveExpenses(updatedExp);
+    setExpenses(updatedExp);
+    toast.success("Výlet odstránený.");
   }
 
   // ── Category CRUD ──
@@ -415,6 +459,7 @@ export default function BudgetPage() {
 
   const selectedCatLabel = categories.find((c) => c.id === expForm.categoryId);
   const selectedRecurCat = categories.find((c) => c.id === recurForm.categoryId);
+  const selectedTripLabel = trips.find((t) => t.id === expForm.tripId);
 
   return (
     <AppShell>
@@ -425,7 +470,7 @@ export default function BudgetPage() {
             <h1 className="text-2xl font-bold">Výdavky & Rozpočet</h1>
             <p className="text-muted-foreground text-sm mt-1">Sleduj výdavky a mesačné limity</p>
           </div>
-          <Button size="sm" onClick={openAddExp}><Plus className="w-4 h-4 mr-2" />Pridať výdavok</Button>
+          <Button size="sm" onClick={() => openAddExp()}><Plus className="w-4 h-4 mr-2" />Pridať výdavok</Button>
         </div>
 
         {/* Month selector */}
@@ -483,6 +528,12 @@ export default function BudgetPage() {
                 <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">
                   {recurring.filter((r) => r.active).length}
                 </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="trips">
+              Výlety
+              {trips.length > 0 && (
+                <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{trips.length}</Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="categories">Kategórie</TabsTrigger>
@@ -651,6 +702,7 @@ export default function BudgetPage() {
                 .map((e) => {
                   const cat = categories.find((c) => c.id === e.categoryId);
                   const isRecurring = (e as Expense & { _recurring?: boolean })._recurring;
+                  const tripTag = e.tripId ? trips.find((t) => t.id === e.tripId) : null;
                   return (
                     <Card key={e.id}>
                       <CardContent className="pt-3 pb-3 flex items-center gap-3">
@@ -662,6 +714,11 @@ export default function BudgetPage() {
                           <div className="flex items-center gap-1.5">
                             <p className="text-sm font-medium truncate">{e.description}</p>
                             {isRecurring && <Badge variant="outline" className="text-xs shrink-0">Automatické</Badge>}
+                            {tripTag && (
+                              <Badge variant="secondary" className="text-xs shrink-0 gap-0.5">
+                                <MapPin className="w-2.5 h-2.5" />{tripTag.icon} {tripTag.name}
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {cat?.name ?? "—"} · {new Date(e.date).toLocaleDateString("sk-SK")}
@@ -797,6 +854,95 @@ export default function BudgetPage() {
             )}
           </TabsContent>
 
+          {/* ── Trips tab ── */}
+          <TabsContent value="trips" className="space-y-4 mt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">Skupinové výdavky na výlety a udalosti.</p>
+              <Button size="sm" onClick={openAddTrip}><Plus className="w-4 h-4 mr-2" />Nový výlet</Button>
+            </div>
+            {trips.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-muted-foreground">
+                  Žiadne výlety. Pridaj výlet a priradí k nemu výdavky.
+                </CardContent>
+              </Card>
+            ) : (
+              [...trips]
+                .sort((a, b) => b.dateFrom.localeCompare(a.dateFrom))
+                .map((trip) => {
+                  const tripExpenses = expenses.filter((e) => e.tripId === trip.id);
+                  const tripTotal = tripExpenses.reduce((s, e) => s + e.amount, 0);
+                  const isExpanded = expandedTrip === trip.id;
+                  return (
+                    <Card key={trip.id}>
+                      <CardContent className="pt-3 pb-3">
+                        <div
+                          className="flex items-center gap-3 cursor-pointer"
+                          onClick={() => setExpandedTrip(isExpanded ? null : trip.id)}
+                        >
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 bg-blue-100 dark:bg-blue-900">
+                            {trip.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold">{trip.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(trip.dateFrom).toLocaleDateString("sk-SK")} – {new Date(trip.dateTo).toLocaleDateString("sk-SK")}
+                              {trip.note && ` · ${trip.note}`}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-bold text-sm">{fmt(tripTotal)}</p>
+                            <p className="text-xs text-muted-foreground">{tripExpenses.length} výdavkov</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" onClick={(ev) => { ev.stopPropagation(); openAddExp(trip.id); }}>
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={(ev) => { ev.stopPropagation(); openEditTrip(trip); }}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={(ev) => { ev.stopPropagation(); deleteTrip(trip.id); }}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="mt-3 space-y-1.5 border-t pt-3">
+                            {tripExpenses.length === 0 ? (
+                              <p className="text-xs text-muted-foreground text-center py-2">Žiadne výdavky. Klikni + pre pridanie.</p>
+                            ) : (
+                              [...tripExpenses]
+                                .sort((a, b) => b.date.localeCompare(a.date))
+                                .map((e) => {
+                                  const cat = categories.find((c) => c.id === e.categoryId);
+                                  return (
+                                    <div key={e.id} className="flex items-center gap-2 text-sm">
+                                      <span className="text-base">{cat?.icon ?? "📦"}</span>
+                                      <span className="flex-1 min-w-0 truncate">{e.description}</span>
+                                      <span className="text-xs text-muted-foreground shrink-0">{new Date(e.date).toLocaleDateString("sk-SK")}</span>
+                                      <span className="font-semibold shrink-0">{fmt(e.amount)}</span>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => openEditExp(e)}>
+                                        <Pencil className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  );
+                                })
+                            )}
+                            {tripExpenses.length > 1 && (
+                              <div className="flex justify-between text-xs font-semibold border-t pt-1.5 mt-1">
+                                <span>Spolu</span>
+                                <span>{fmt(tripTotal)}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })
+            )}
+          </TabsContent>
+
           {/* ── Categories tab ── */}
           <TabsContent value="categories" className="space-y-4 mt-4">
             <div className="flex justify-end">
@@ -859,6 +1005,24 @@ export default function BudgetPage() {
                 </SelectContent>
               </Select>
             </div>
+            {trips.length > 0 && (
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Výlet / udalosť (voliteľné)</label>
+                <Select value={expForm.tripId || "__none__"} onValueChange={(v) => setExpForm({ ...expForm, tripId: v === "__none__" ? "" : (v ?? "") })}>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {selectedTripLabel ? `${selectedTripLabel.icon} ${selectedTripLabel.name}` : "— bez výletu —"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— bez výletu —</SelectItem>
+                    {trips.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.icon} {t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Popis</label>
               <Input placeholder="napr. Nákup Lidl" value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} />
@@ -1003,6 +1167,52 @@ export default function BudgetPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRecurOpen(false)}>Zrušiť</Button>
             <Button onClick={saveRecur}>Uložiť</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Add/Edit trip dialog */}
+      <Dialog open={tripOpen} onOpenChange={setTripOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{editingTrip ? "Upraviť výlet" : "Nový výlet"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Ikona</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {["✈️","🏖️","🏔️","🌍","🗺️","🚢","🚂","🏕️","🎡","🎪","🎭","🎵","🍽️","🍺","🎯","🏆","🤿","⛷️","🏄","🧳"].map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => setTripForm({ ...tripForm, icon: em })}
+                    className={`text-lg p-1 rounded-md border transition-colors ${tripForm.icon === em ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"}`}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+              <Input placeholder="vlastné emoji" value={tripForm.icon} onChange={(e) => setTripForm({ ...tripForm, icon: e.target.value })} className="text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Názov</label>
+              <Input placeholder="napr. Dovolenka v Turecku" value={tripForm.name} onChange={(e) => setTripForm({ ...tripForm, name: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Od</label>
+                <Input type="date" value={tripForm.dateFrom} onChange={(e) => setTripForm({ ...tripForm, dateFrom: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Do</label>
+                <Input type="date" value={tripForm.dateTo} onChange={(e) => setTripForm({ ...tripForm, dateTo: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Poznámka (voliteľné)</label>
+              <Input placeholder="napr. All inclusive, 2 týždne" value={tripForm.note} onChange={(e) => setTripForm({ ...tripForm, note: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTripOpen(false)}>Zrušiť</Button>
+            <Button onClick={saveTrip}>Uložiť</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

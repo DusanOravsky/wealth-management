@@ -12,6 +12,7 @@ export const STORE_KEYS = {
   TARGET_ALLOCATION: "wm_target_allocation",
   FIRE_SETTINGS: "wm_fire_settings",
   WATCHLIST: "wm_watchlist",
+  TRIPS: "wm_trips",
 } as const;
 
 export const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
