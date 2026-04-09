@@ -332,8 +332,8 @@ export function saveFireSettings(data: { monthlyExpenses: number; monthlyContrib
 
 function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
   const map = new Map<string, T>();
-  existing.forEach(item => map.set(item.id, item));
-  incoming.forEach(item => map.set(item.id, item)); // incoming wins on conflict
+  (Array.isArray(existing) ? existing : []).forEach(item => map.set(item.id, item));
+  (Array.isArray(incoming) ? incoming : []).forEach(item => map.set(item.id, item)); // incoming wins on conflict
   return Array.from(map.values());
 }
 
@@ -548,9 +548,16 @@ export async function importQRPayload(encoded: string, pin: string, salt: string
     throw new Error("Neplatný QR kód — dáta sa nedajú načítať.");
   }
   if (data.portfolio) await mergeAndSavePortfolio(data.portfolio as PortfolioData, pin, salt);
-  if (data.s) {
+  if (data.s && typeof data.s === "object" && data.s !== null) {
     const current = loadSettings();
-    if (current) saveSettings({ ...current, ...data.s });
+    const s = data.s as Record<string, unknown>;
+    if (current) saveSettings({
+      ...current,
+      ...(s.displayCurrency !== undefined && { displayCurrency: s.displayCurrency as AppSettings["displayCurrency"] }),
+      ...(s.birthYear !== undefined && { birthYear: s.birthYear as number }),
+      ...(s.retirementAge !== undefined && { retirementAge: s.retirementAge as number }),
+      ...(s.monthlyIncome !== undefined && { monthlyIncome: s.monthlyIncome as number }),
+    });
   }
   if (data.goals) saveGoals(mergeById(loadGoals(), data.goals as FinancialGoal[]));
   if (data.alerts) saveAlerts(mergeById(loadAlerts(), data.alerts as PriceAlert[]));
@@ -571,17 +578,6 @@ export async function importQRPayload(encoded: string, pin: string, salt: string
 // ---------- Full wipe ----------
 
 export function wipeAll(): void {
-  rawRemove(STORE_KEYS.SETTINGS);
-  rawRemove(STORE_KEYS.PORTFOLIO);
-  rawRemove(STORE_KEYS.SNAPSHOTS);
-  rawRemove(STORE_KEYS.GOALS);
-  rawRemove(STORE_KEYS.ALERTS);
-  rawRemove(STORE_KEYS.INSURANCE);
-  rawRemove(STORE_KEYS.BUDGET_CATEGORIES);
-  rawRemove(STORE_KEYS.EXPENSES);
-  rawRemove(STORE_KEYS.RECURRING_EXPENSES);
-  rawRemove(STORE_KEYS.RECOMMENDATIONS);
-  rawRemove(STORE_KEYS.TARGET_ALLOCATION);
-  rawRemove(STORE_KEYS.FIRE_SETTINGS);
+  Object.values(STORE_KEYS).forEach(rawRemove);
   clearSession();
 }
