@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp, getDecryptedKey } from "@/context/AppContext";
-import { loadRecommendations, saveRecommendations } from "@/lib/store";
-import { fetchRecommendations } from "@/lib/claude";
+import { loadRecommendations, saveRecommendations, loadExpenses, loadBudgetCategories, loadRecurringExpenses } from "@/lib/store";
+import { fetchRecommendations, buildBudgetContext } from "@/lib/claude";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, AlertTriangle, TrendingUp, Shield, Lightbulb, Loader2 } from "lucide-react";
+import { Sparkles, AlertTriangle, TrendingUp, Shield, Lightbulb, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { Recommendation } from "@/lib/types";
 
@@ -17,6 +17,7 @@ const CATEGORY_ICONS = {
   risk: Shield,
   opportunity: Lightbulb,
   warning: AlertTriangle,
+  budget: Wallet,
 };
 
 const CATEGORY_LABELS = {
@@ -24,6 +25,7 @@ const CATEGORY_LABELS = {
   risk: "Riziko",
   opportunity: "Príležitosť",
   warning: "Upozornenie",
+  budget: "Rozpočet",
 };
 
 const PRIORITY_VARIANTS: Record<string, "default" | "secondary" | "destructive"> = {
@@ -55,7 +57,8 @@ export default function AdvisorPage() {
     setLoading(true);
     setError(null);
     try {
-      const recs = await fetchRecommendations(summary, claudeKey);
+      const budget = buildBudgetContext(loadExpenses(), loadBudgetCategories(), loadRecurringExpenses());
+      const recs = await fetchRecommendations(summary, claudeKey, budget);
       setRecommendations(recs);
       saveRecommendations(recs);
       toast.success("Odporúčania vygenerované.");

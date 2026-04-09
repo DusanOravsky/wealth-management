@@ -339,7 +339,7 @@ export interface InsuranceClaim {
 
 // AI Recommendation
 export interface Recommendation {
-  category: "allocation" | "risk" | "opportunity" | "warning";
+  category: "allocation" | "risk" | "opportunity" | "warning" | "budget";
   title: string;
   description: string;
   priority: "high" | "medium" | "low";

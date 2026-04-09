@@ -1,4 +1,9 @@
-import type { PortfolioSummary, Recommendation, Insurance } from "./types";
+import type { PortfolioSummary, Recommendation, Insurance, BudgetCategory, Expense, RecurringExpense } from "./types";
+
+export interface BudgetContext {
+  monthlyIncome: number;
+  topCategories: { name: string; icon: string; monthlyAvg: number; limit: number }[];
+}
 
 const CLAUDE_API = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
@@ -22,7 +27,7 @@ function extractJsonArray(text: string): string {
   return text.slice(start);
 }
 
-function buildPrompt(summary: PortfolioSummary): string {
+function buildPrompt(summary: PortfolioSummary, budget?: BudgetContext): string {
   const lines = summary.assets.map(
     (a) => `- ${a.label} (${a.category}): €${a.valueEur.toFixed(2)}`
   );
@@ -31,7 +36,30 @@ function buildPrompt(summary: PortfolioSummary): string {
     return `${a.label}: ${pct}%`;
   });
 
-  return `Si osobný finančný poradca. Analyzuj nasledujúce portfólio a poskytni konkrétne odporúčania v slovenčine.
+  let budgetSection = "";
+  if (budget && budget.topCategories.length > 0) {
+    const monthlyExpenses = budget.topCategories.reduce((s, c) => s + c.monthlyAvg, 0);
+    const savings = budget.monthlyIncome - monthlyExpenses;
+    const savingsRate = budget.monthlyIncome > 0 ? ((savings / budget.monthlyIncome) * 100).toFixed(0) : "?";
+    const catLines = budget.topCategories.map(
+      (c) => `  - ${c.icon} ${c.name}: €${c.monthlyAvg.toFixed(0)}/mes${c.limit > 0 ? ` (limit €${c.limit})` : ""}`
+    );
+    budgetSection = `
+
+Mesačný rozpočet:
+- Príjmy: €${budget.monthlyIncome.toFixed(0)}/mes
+- Výdavky (priemer posl. 3 mesiace): €${monthlyExpenses.toFixed(0)}/mes
+- Úspora: €${savings.toFixed(0)}/mes (${savingsRate}% miera úspor)
+
+Výdavky podľa kategórií (mes. priemer):
+${catLines.join("\n")}`;
+  }
+
+  const catTypes = budget && budget.topCategories.length > 0
+    ? ` | "budget"`
+    : "";
+
+  return `Si osobný finančný poradca. Analyzuj nasledujúce portfólio${budget ? " a rozpočet" : ""} a poskytni konkrétne odporúčania v slovenčine.
 
 Celková hodnota portfólia: €${summary.totalEur.toFixed(2)}
 Posledná aktualizácia: ${summary.lastUpdated}
@@ -40,10 +68,10 @@ Rozloženie aktív:
 ${lines.join("\n")}
 
 Alokácia:
-${allocations.join("\n")}
+${allocations.join("\n")}${budgetSection}
 
-Poskytni 4–6 konkrétnych odporúčaní vo formáte JSON. Každé odporúčanie musí obsahovať:
-- category: "allocation" | "risk" | "opportunity" | "warning"
+Poskytni 5–8 konkrétnych odporúčaní vo formáte JSON. Každé odporúčanie musí obsahovať:
+- category: "allocation" | "risk" | "opportunity" | "warning"${catTypes}
 - title: krátky nadpis (max 10 slov, po slovensky)
 - description: konkrétna rada (2–3 vety, po slovensky)
 - priority: "high" | "medium" | "low"
@@ -53,7 +81,7 @@ Zohľadni:
 2. Riziko (volatilita krypta, koncentrácia komodít)
 3. Likviditu (hotovosť vs. nelikvidné aktíva)
 4. Slovenský kontext (II. pilier je viazaný do dôchodku)
-5. Ochranu pred infláciou
+5. Ochranu pred infláciou${budget ? "\n6. Mieru úspor, kategórie kde sa míňa najviac, prekročené limity" : ""}
 
 Odpovedaj VÝHRADNE validným JSON poľom, žiadny markdown, žiadne vysvetlenia.`;
 }
@@ -139,11 +167,39 @@ Vráť VÝHRADNE validné JSON pole, žiadny markdown, žiadne vysvetlenia:
   }
 }
 
+export function buildBudgetContext(
+  expenses: Expense[],
+  categories: BudgetCategory[],
+  recurring: RecurringExpense[]
+): BudgetContext {
+  const now = new Date();
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const recent = expenses.filter((e) => new Date(e.date) >= threeMonthsAgo);
+
+  const catTotals: Record<string, number> = {};
+  for (const e of recent) {
+    catTotals[e.categoryId] = (catTotals[e.categoryId] ?? 0) + e.amount;
+  }
+
+  const topCategories = categories
+    .filter((c) => (catTotals[c.id] ?? 0) > 0)
+    .map((c) => ({ name: c.name, icon: c.icon, monthlyAvg: catTotals[c.id] / 3, limit: c.monthlyLimit }))
+    .sort((a, b) => b.monthlyAvg - a.monthlyAvg)
+    .slice(0, 10);
+
+  const monthlyIncome = recurring
+    .filter((r) => r.active && r.type === "income" && r.frequency === "monthly")
+    .reduce((sum, r) => sum + r.amount, 0);
+
+  return { monthlyIncome, topCategories };
+}
+
 export async function fetchRecommendations(
   summary: PortfolioSummary,
-  claudeApiKey: string
+  claudeApiKey: string,
+  budget?: BudgetContext
 ): Promise<Recommendation[]> {
-  const prompt = buildPrompt(summary);
+  const prompt = buildPrompt(summary, budget);
 
   const res = await fetch(CLAUDE_API, {
     method: "POST",
