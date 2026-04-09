@@ -1006,7 +1006,7 @@ export default function BudgetPage() {
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((c) => (
+                  {[...categories].sort((a, b) => a.name.localeCompare(b.name, "sk")).map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.icon} {c.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1124,7 +1124,7 @@ export default function BudgetPage() {
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.icon} {c.name}</SelectItem>)}
+                    {[...categories].sort((a, b) => a.name.localeCompare(b.name, "sk")).map((c) => <SelectItem key={c.id} value={c.id}>{c.icon} {c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
