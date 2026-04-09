@@ -13,7 +13,7 @@ import { Pencil, Check, X } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { loadTargetAllocation, saveTargetAllocation, loadFireSettings, saveFireSettings } from "@/lib/store";
+import { loadTargetAllocation, saveTargetAllocation, loadFireSettings, saveFireSettings, loadRecurringExpenses } from "@/lib/store";
 
 const CATEGORY_LABELS: Record<string, string> = {
   commodity: "Komodity", cash: "Hotovosť", pension: "II. Pilier", bank: "Banka", crypto: "Krypto",
@@ -61,8 +61,21 @@ function calcMonthsToFIRE(
   return Math.log(numer / denom) / Math.log(1 + r);
 }
 
+function calcMonthlyPayment(loanAmount: number, annualRate: number, termYears: number): number {
+  if (annualRate === 0) return loanAmount / (termYears * 12);
+  const r = annualRate / 100 / 12;
+  const n = termYears * 12;
+  return (loanAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+}
+
+function toEurSimple(amount: number, currency: string, rates: Record<string, number>): number {
+  if (currency === "EUR") return amount;
+  const rate = rates[currency];
+  return rate ? amount / rate : amount;
+}
+
 export default function PlanningPage() {
-  const { portfolioSummary, settings } = useApp();
+  const { portfolioSummary, settings, portfolio, rates } = useApp();
 
   const grouped = useMemo(
     () => (portfolioSummary ? groupByCategory(portfolioSummary) : {}),
@@ -126,6 +139,29 @@ export default function PlanningPage() {
   })), [grouped]);
   const liquidTotal = liquidityData.reduce((s, g) => s + g.value, 0);
 
+  // Cashflow projector
+  const cashflow = useMemo(() => {
+    const recurring = loadRecurringExpenses();
+    const incomes = recurring.filter((r) => r.active && r.type === "income").map((r) => ({
+      label: r.description,
+      amount: r.frequency === "monthly" ? r.amount : r.amount / 12,
+    }));
+    const fixedExpenses = recurring.filter((r) => r.active && r.type === "expense").map((r) => ({
+      label: r.description,
+      amount: r.frequency === "monthly" ? r.amount : r.amount / 12,
+    }));
+    const mortgages = (portfolio?.realestate ?? [])
+      .filter((r) => r.loanAmount && r.loanInterestRate !== undefined && r.loanTermYears && r.loanStartDate)
+      .map((r) => ({
+        label: r.name,
+        amount: toEurSimple(calcMonthlyPayment(r.loanAmount!, r.loanInterestRate!, r.loanTermYears!), r.currency, rates ?? {}),
+      }));
+    const totalIncome = incomes.reduce((s, i) => s + i.amount, 0);
+    const totalFixed = fixedExpenses.reduce((s, e) => s + e.amount, 0);
+    const totalMortgage = mortgages.reduce((s, m) => s + m.amount, 0);
+    return { incomes, fixedExpenses, mortgages, totalIncome, totalFixed, totalMortgage };
+  }, [portfolio, rates]);
+
   // Pension projector state
   const [pensionContrib, setPensionContrib] = useState<number>(100);
   const [pensionReturn, setPensionReturn] = useState<number>(4);
@@ -154,6 +190,7 @@ export default function PlanningPage() {
             <TabsTrigger value="allocation">Alokácia</TabsTrigger>
             <TabsTrigger value="fire">FIRE kalkulátor</TabsTrigger>
             <TabsTrigger value="pension">II. Pilier</TabsTrigger>
+            <TabsTrigger value="cashflow">Cashflow</TabsTrigger>
           </TabsList>
 
           {/* ── Allocation tab ── */}
@@ -609,6 +646,127 @@ export default function PlanningPage() {
                       </div>
                     </CardContent>
                   </Card>
+                </>
+              );
+            })()}
+          </TabsContent>
+          {/* ── Cashflow projector tab ── */}
+          <TabsContent value="cashflow" className="space-y-6 mt-4">
+            {(() => {
+              const { incomes, fixedExpenses, mortgages, totalIncome, totalFixed, totalMortgage } = cashflow;
+              const afterFixed = totalIncome - totalFixed - totalMortgage;
+              const freeCashflow = afterFixed - monthlyContrib;
+              const savingsRateCf = totalIncome > 0 ? ((monthlyContrib / totalIncome) * 100) : 0;
+
+              return (
+                <>
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <Card className="bg-green-500/10 border-green-500/20">
+                      <CardContent className="pt-4">
+                        <p className="text-xs text-muted-foreground">Príjmy / mes.</p>
+                        <p className="text-xl font-bold text-green-600 dark:text-green-400 mt-0.5">{fmt(totalIncome)}</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-red-500/10 border-red-500/20">
+                      <CardContent className="pt-4">
+                        <p className="text-xs text-muted-foreground">Fixné výdavky</p>
+                        <p className="text-xl font-bold text-red-500 mt-0.5">{fmt(totalFixed + totalMortgage)}</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-blue-500/10 border-blue-500/20">
+                      <CardContent className="pt-4">
+                        <p className="text-xs text-muted-foreground">Sporenie / inv.</p>
+                        <p className="text-xl font-bold text-blue-500 mt-0.5">{fmt(monthlyContrib)}</p>
+                        <p className="text-xs text-muted-foreground">{savingsRateCf.toFixed(0)}% z príjmu</p>
+                      </CardContent>
+                    </Card>
+                    <Card className={freeCashflow >= 0 ? "bg-primary/10 border-primary/20" : "bg-red-500/10 border-red-500/20"}>
+                      <CardContent className="pt-4">
+                        <p className="text-xs text-muted-foreground">Voľný cashflow</p>
+                        <p className={`text-xl font-bold mt-0.5 ${freeCashflow >= 0 ? "text-primary" : "text-red-500"}`}>{fmt(freeCashflow)}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Waterfall breakdown */}
+                  <Card>
+                    <CardHeader><CardTitle className="text-base">Mesačný cashflow</CardTitle></CardHeader>
+                    <CardContent className="space-y-1">
+                      {/* Incomes */}
+                      {incomes.map((item, i) => (
+                        <div key={i} className="flex items-center justify-between py-1.5 border-b border-muted/50 last:border-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                            <span className="text-sm truncate">{item.label}</span>
+                          </div>
+                          <span className="text-sm font-medium text-green-600 dark:text-green-400 shrink-0 ml-2">+{fmt(item.amount)}</span>
+                        </div>
+                      ))}
+
+                      {/* Subtotal after income */}
+                      {incomes.length > 0 && (
+                        <div className="flex justify-between py-1.5 text-sm font-semibold border-t border-muted mt-1">
+                          <span>Celkové príjmy</span>
+                          <span className="text-green-600 dark:text-green-400">+{fmt(totalIncome)}</span>
+                        </div>
+                      )}
+
+                      {/* Fixed expenses */}
+                      {fixedExpenses.map((item, i) => (
+                        <div key={i} className="flex items-center justify-between py-1.5 border-b border-muted/50 last:border-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                            <span className="text-sm truncate">{item.label}</span>
+                          </div>
+                          <span className="text-sm font-medium text-red-500 shrink-0 ml-2">−{fmt(item.amount)}</span>
+                        </div>
+                      ))}
+
+                      {/* Mortgages */}
+                      {mortgages.map((item, i) => (
+                        <div key={i} className="flex items-center justify-between py-1.5 border-b border-muted/50 last:border-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+                            <span className="text-sm truncate">{item.label} (hypotéka)</span>
+                          </div>
+                          <span className="text-sm font-medium text-red-500 shrink-0 ml-2">−{fmt(item.amount)}</span>
+                        </div>
+                      ))}
+
+                      {/* After fixed */}
+                      <div className="flex justify-between py-1.5 text-sm font-semibold border-t border-muted">
+                        <span>Po fixných výdavkoch</span>
+                        <span className={afterFixed >= 0 ? "text-foreground" : "text-red-500"}>{afterFixed >= 0 ? "" : "−"}{fmt(Math.abs(afterFixed))}</span>
+                      </div>
+
+                      {/* Savings */}
+                      <div className="flex items-center justify-between py-1.5 border-b border-muted/50">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                          <span className="text-sm">Sporenie / investície</span>
+                          <span className="text-xs text-muted-foreground">(z FIRE kal.)</span>
+                        </div>
+                        <span className="text-sm font-medium text-blue-500 shrink-0 ml-2">−{fmt(monthlyContrib)}</span>
+                      </div>
+
+                      {/* Free cashflow */}
+                      <div className={`flex justify-between py-2 px-3 rounded-md mt-2 ${freeCashflow >= 0 ? "bg-primary/10" : "bg-red-500/10"}`}>
+                        <span className="text-sm font-bold">Voľný cashflow</span>
+                        <span className={`text-sm font-bold ${freeCashflow >= 0 ? "text-primary" : "text-red-500"}`}>
+                          {freeCashflow >= 0 ? "+" : "−"}{fmt(Math.abs(freeCashflow))}
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {incomes.length === 0 && fixedExpenses.length === 0 && mortgages.length === 0 && (
+                    <Card>
+                      <CardContent className="py-12 text-center text-muted-foreground text-sm">
+                        Pridaj pravidelné príjmy a výdavky v sekcii Rozpočet → Pravidelné.
+                      </CardContent>
+                    </Card>
+                  )}
                 </>
               );
             })()}
