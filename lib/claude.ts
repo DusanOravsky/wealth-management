@@ -329,3 +329,75 @@ export async function fetchRecommendations(
     throw new Error(`JSON parse zlyhalo. Claude vrátil: ${text.slice(0, 300)}`);
   }
 }
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export function buildChatSystemPrompt(
+  summary: PortfolioSummary,
+  budget?: BudgetContext,
+  profile?: ProfileContext,
+  insurance?: Insurance[]
+): string {
+  const lines = summary.assets.map(
+    (a) => `- ${a.label} (${a.category}): €${a.valueEur.toFixed(0)}`
+  );
+
+  let budgetPart = "";
+  if (budget && budget.topCategories.length > 0) {
+    const spent = budget.topCategories.reduce((s, c) => s + c.monthlyAvg, 0);
+    budgetPart = `\nRozpočet: príjem €${budget.monthlyIncome.toFixed(0)}/mes, výdavky €${spent.toFixed(0)}/mes, úspora €${(budget.monthlyIncome - spent).toFixed(0)}/mes`;
+  }
+
+  let profilePart = "";
+  if (profile) {
+    profilePart = `\nVek: ${profile.age} r., do dôchodku: ${profile.yearsToRetirement} r.`;
+  }
+
+  let insurancePart = "";
+  if (insurance !== undefined) {
+    const types = insurance.map((i) => i.type);
+    const missing = (["life", "health", "property"] as const).filter((t) => !types.includes(t));
+    if (missing.length > 0) insurancePart = `\nChýbajúce poistenie: ${missing.join(", ")}`;
+  }
+
+  return `Si osobný finančný poradca používateľa. Odpovedaj VÝHRADNE po slovensky. Buď konkrétny, stručný a praktický.
+
+Kontext portfólia (celkom €${summary.totalEur.toFixed(0)}):
+${lines.join("\n")}${budgetPart}${profilePart}${insurancePart}
+
+Slovenský daňový kontext: akcie/ETF oslobodené po 1 roku, dividendy 7%+14%, krypto zdanené ako príjem, II. pilier = povinné dôchodkové sporenie.`;
+}
+
+export async function sendChatMessage(
+  messages: ChatMessage[],
+  systemPrompt: string,
+  claudeApiKey: string
+): Promise<string> {
+  const res = await fetch(CLAUDE_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": claudeApiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = (err as { error?: { message?: string } })?.error?.message;
+    throw new Error(msg ?? `Claude API chyba ${res.status}`);
+  }
+
+  const data = await res.json();
+  return (data.content?.[0]?.text ?? "") as string;
+}
