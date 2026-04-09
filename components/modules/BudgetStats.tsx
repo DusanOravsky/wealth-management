@@ -24,7 +24,7 @@ function fmtDec(n: number) {
 
 function getMonthTotal(expenses: Expense[], recurring: RecurringExpense[], year: number, month: number): number {
   const mk = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const manual = expenses.filter((e) => e.date.startsWith(mk)).reduce((s, e) => s + e.amount, 0);
+  const manual = expenses.filter((e) => e.date.startsWith(mk) && e.type !== "income").reduce((s, e) => s + e.amount, 0);
   const rec = recurring
     .filter((r) => {
       if (!r.active || r.type === "income") return false;
@@ -44,7 +44,7 @@ function getCatTotalForPeriod(
 ): number {
   return months.reduce((s, { year, month }) => {
     const mk = `${year}-${String(month + 1).padStart(2, "0")}`;
-    const manual = expenses.filter((e) => e.date.startsWith(mk) && e.categoryId === catId).reduce((sum, e) => sum + e.amount, 0);
+    const manual = expenses.filter((e) => e.date.startsWith(mk) && e.categoryId === catId && e.type !== "income").reduce((sum, e) => sum + e.amount, 0);
     const rec = recurring
       .filter((r) => {
         if (!r.active || r.type === "income" || r.categoryId !== catId) return false;
@@ -203,7 +203,7 @@ export function BudgetStats({ expenses, recurring, categories }: Props) {
   const topExpenses = useMemo(() => {
     const mks = new Set(topMonths.map(({ year, month }) => `${year}-${String(month + 1).padStart(2, "0")}`));
     return [...expenses]
-      .filter((e) => mks.has(e.date.slice(0, 7)))
+      .filter((e) => mks.has(e.date.slice(0, 7)) && e.type !== "income")
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 10);
   }, [expenses, topMonths]);
