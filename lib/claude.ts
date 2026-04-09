@@ -205,6 +205,7 @@ export function buildBudgetContext(
 
   const catTotals: Record<string, number> = {};
   for (const e of recent) {
+    if (e.type === "income") continue; // exclude manual income entries from expense totals
     catTotals[e.categoryId] = (catTotals[e.categoryId] ?? 0) + e.amount;
   }
 
@@ -214,9 +215,17 @@ export function buildBudgetContext(
     .sort((a, b) => b.monthlyAvg - a.monthlyAvg)
     .slice(0, 10);
 
-  const monthlyIncome = recurring
-    .filter((r) => r.active && r.type === "income" && r.frequency === "monthly")
-    .reduce((sum, r) => sum + r.amount, 0);
+  // Recurring income: monthly entries + annual entries prorated
+  const recurringMonthlyIncome = recurring
+    .filter((r) => r.active && r.type === "income")
+    .reduce((sum, r) => sum + (r.frequency === "monthly" ? r.amount : r.amount / 12), 0);
+
+  // Manual income: average of last 3 months from expense entries with type === "income"
+  const manualMonthlyIncome = recent
+    .filter((e) => e.type === "income")
+    .reduce((sum, e) => sum + e.amount, 0) / 3;
+
+  const monthlyIncome = recurringMonthlyIncome + manualMonthlyIncome;
 
   return { monthlyIncome, topCategories };
 }
