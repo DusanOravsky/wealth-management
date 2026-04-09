@@ -14,6 +14,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { loadTargetAllocation, saveTargetAllocation, loadFireSettings, saveFireSettings, loadRecurringExpenses } from "@/lib/store";
+import { FALLBACK_RATES } from "@/lib/constants";
 
 const CATEGORY_LABELS: Record<string, string> = {
   commodity: "Komodity", cash: "Hotovosť", pension: "II. Pilier", bank: "Banka", crypto: "Krypto",
@@ -70,7 +71,7 @@ function calcMonthlyPayment(loanAmount: number, annualRate: number, termYears: n
 
 function toEurSimple(amount: number, currency: string, rates: Record<string, number>): number {
   if (currency === "EUR") return amount;
-  const rate = rates[currency];
+  const rate = rates[currency] ?? FALLBACK_RATES[currency];
   return rate ? amount / rate : amount;
 }
 

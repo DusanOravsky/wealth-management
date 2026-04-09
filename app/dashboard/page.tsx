@@ -139,8 +139,13 @@ function getCurrentMonthCashflow(): MonthlyCashflow {
     .sort((a, b) => a.dayOfMonth - b.dayOfMonth)[0];
   let daysUntilPay: number | null = null;
   if (paySource) {
-    let payDay = new Date(year, month, paySource.dayOfMonth);
-    if (payDay <= now) payDay = new Date(year, month + 1, paySource.dayOfMonth);
+    const clampDay = (y: number, m: number) => Math.min(paySource.dayOfMonth, new Date(y, m + 1, 0).getDate());
+    let payDay = new Date(year, month, clampDay(year, month));
+    if (payDay <= now) {
+      const nm = month === 11 ? 0 : month + 1;
+      const ny = month === 11 ? year + 1 : year;
+      payDay = new Date(ny, nm, clampDay(ny, nm));
+    }
     daysUntilPay = Math.ceil((payDay.getTime() - now.getTime()) / 86400000);
   }
 

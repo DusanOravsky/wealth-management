@@ -108,7 +108,6 @@ export default function BudgetPage() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const touchStartX = useRef<number>(0);
-  const notified80Ref = useRef<Set<string>>(new Set());
   const [categories, setCategories] = useState<BudgetCategory[]>(() => {
     const saved = loadBudgetCategories();
     return saved.length > 0 ? saved : DEFAULT_CATEGORIES;
@@ -183,20 +182,26 @@ export default function BudgetPage() {
   // 80% budget limit notifications
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-    for (const cat of categories) {
-      if (cat.monthlyLimit <= 0) continue;
-      const spent = catTotals[cat.id] ?? 0;
-      const pct = spent / cat.monthlyLimit;
-      const key = `${cat.id}-${year}-${month}`;
-      if (pct >= 0.8 && pct < 1 && !notified80Ref.current.has(key)) {
-        notified80Ref.current.add(key);
-        new Notification(`Rozpočet: ${cat.name}`, {
-          body: `Dosiahol si ${(pct * 100).toFixed(0)}% limitu (${fmt(spent)} / ${fmt(cat.monthlyLimit)})`,
-          icon: "/wealth-management/icon-192.png",
-        });
+    async function checkAndNotify() {
+      if (Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+      if (Notification.permission !== "granted") return;
+      for (const cat of categories) {
+        if (cat.monthlyLimit <= 0) continue;
+        const spent = catTotals[cat.id] ?? 0;
+        const pct = spent / cat.monthlyLimit;
+        const key = `notified80_${year}_${month}_${cat.id}`;
+        if (pct >= 0.8 && pct < 1 && !sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, "1");
+          new Notification(`Rozpočet: ${cat.name}`, {
+            body: `Dosiahol si ${(pct * 100).toFixed(0)}% limitu (${fmt(spent)} / ${fmt(cat.monthlyLimit)})`,
+            icon: "/wealth-management/icon-192.png",
+          });
+        }
       }
     }
+    checkAndNotify();
   }, [catTotals, categories, year, month]);
 
   const recurringIncome = useMemo(
@@ -533,6 +538,7 @@ export default function BudgetPage() {
         className="p-4 md:p-6 space-y-4 md:space-y-6 page-enter"
         onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
         onTouchEnd={(e) => {
+          if (expOpen || catOpen || recurOpen || tripOpen || scanOpen) return;
           const diff = touchStartX.current - e.changedTouches[0].clientX;
           if (Math.abs(diff) > 60) { diff > 0 ? nextMonth() : prevMonth(); }
         }}

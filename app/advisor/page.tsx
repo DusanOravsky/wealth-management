@@ -37,7 +37,7 @@ const PRIORITY_VARIANTS: Record<string, "default" | "secondary" | "destructive">
 const PRIORITY_LABELS = { high: "Vysoká", medium: "Stredná", low: "Nízka" };
 
 export default function AdvisorPage() {
-  const { portfolioSummary: summary, pin, settings } = useApp();
+  const { portfolioSummary: summary, pin, settings, rates } = useApp();
   const [recommendations, setRecommendations] = useState<Recommendation[]>(() =>
     typeof window !== "undefined" ? loadRecommendations() : []
   );
@@ -58,7 +58,7 @@ export default function AdvisorPage() {
     setError(null);
     try {
       const budget = buildBudgetContext(loadExpenses(), loadBudgetCategories(), loadRecurringExpenses());
-      const goals = buildGoalContexts(loadGoals(), summary.totalEur, {});
+      const goals = buildGoalContexts(loadGoals(), summary.totalEur, rates ?? {});
       const recs = await fetchRecommendations(summary, claudeKey, budget, goals);
       setRecommendations(recs);
       saveRecommendations(recs);
