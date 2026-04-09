@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp, getDecryptedKey } from "@/context/AppContext";
-import { loadRecommendations, saveRecommendations, loadExpenses, loadBudgetCategories, loadRecurringExpenses, loadGoals } from "@/lib/store";
+import { loadRecommendations, saveRecommendations, loadExpenses, loadBudgetCategories, loadRecurringExpenses, loadGoals, loadInsurance } from "@/lib/store";
 import { fetchRecommendations, buildBudgetContext, buildGoalContexts } from "@/lib/claude";
+import type { ProfileContext } from "@/lib/claude";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +60,16 @@ export default function AdvisorPage() {
     try {
       const budget = buildBudgetContext(loadExpenses(), loadBudgetCategories(), loadRecurringExpenses());
       const goals = buildGoalContexts(loadGoals(), summary.totalEur, rates ?? {});
-      const recs = await fetchRecommendations(summary, claudeKey, budget, goals);
+      const insurance = loadInsurance();
+
+      let profile: ProfileContext | undefined;
+      if (settings.birthYear) {
+        const age = new Date().getFullYear() - settings.birthYear;
+        const retirementAge = settings.retirementAge ?? 65;
+        profile = { age, yearsToRetirement: Math.max(0, retirementAge - age) };
+      }
+
+      const recs = await fetchRecommendations(summary, claudeKey, budget, goals, profile, insurance);
       setRecommendations(recs);
       saveRecommendations(recs);
       toast.success("Odporúčania vygenerované.");

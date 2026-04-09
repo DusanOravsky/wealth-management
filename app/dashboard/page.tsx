@@ -799,7 +799,7 @@ export default function DashboardPage() {
 
       {/* FAB — quick add expense */}
       <Link
-        href="/budget"
+        href="/budget?add=1"
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
         title="Pridať výdavok"
       >

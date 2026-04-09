@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload, QrCode, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload, QrCode, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
 import { haptic } from "@/lib/haptic";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
@@ -118,6 +118,8 @@ export default function BudgetPage() {
 
   // QR scanner
   const [scanOpen, setScanOpen] = useState(false);
+  // Search
+  const [expSearch, setExpSearch] = useState("");
 
   // Expense dialog
   const [expOpen, setExpOpen] = useState(false);
@@ -179,7 +181,7 @@ export default function BudgetPage() {
     }, {});
   }, [categories, allMonthExpensesOnly]);
 
-  // 80% budget limit notifications
+  // 80% and 100% budget limit notifications
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     async function checkAndNotify() {
@@ -191,9 +193,16 @@ export default function BudgetPage() {
         if (cat.monthlyLimit <= 0) continue;
         const spent = catTotals[cat.id] ?? 0;
         const pct = spent / cat.monthlyLimit;
-        const key = `notified80_${year}_${month}_${cat.id}`;
-        if (pct >= 0.8 && pct < 1 && !sessionStorage.getItem(key)) {
-          sessionStorage.setItem(key, "1");
+        const key80 = `notified80_${year}_${month}_${cat.id}`;
+        const key100 = `notified100_${year}_${month}_${cat.id}`;
+        if (pct >= 1 && !sessionStorage.getItem(key100)) {
+          sessionStorage.setItem(key100, "1");
+          new Notification(`🚨 Limit prekročený: ${cat.name}`, {
+            body: `Minuté: ${fmt(spent)} — limit ${fmt(cat.monthlyLimit)} bol prekročený!`,
+            icon: "/wealth-management/icon-192.png",
+          });
+        } else if (pct >= 0.8 && pct < 1 && !sessionStorage.getItem(key80)) {
+          sessionStorage.setItem(key80, "1");
           new Notification(`Rozpočet: ${cat.name}`, {
             body: `Dosiahol si ${(pct * 100).toFixed(0)}% limitu (${fmt(spent)} / ${fmt(cat.monthlyLimit)})`,
             icon: "/wealth-management/icon-192.png",
@@ -203,6 +212,16 @@ export default function BudgetPage() {
     }
     checkAndNotify();
   }, [catTotals, categories, year, month]);
+
+  // Auto-open expense dialog when navigated with ?add=1
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("add") === "1") {
+      openAddExp();
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const recurringIncome = useMemo(
     () => getRecurringIncomeForMonth(recurring, year, month),
@@ -277,7 +296,7 @@ export default function BudgetPage() {
       const m = d.getMonth();
       const mk2 = monthKey(y, m);
       const manualTotal = expenses
-        .filter((e) => e.date.startsWith(mk2))
+        .filter((e) => e.date.startsWith(mk2) && e.type !== "income")
         .reduce((s, e) => s + e.amount, 0);
       const recurTotal = getRecurringForMonth(recurring, y, m)
         .reduce((s, e) => s + e.amount, 0);
@@ -764,7 +783,16 @@ export default function BudgetPage() {
 
           {/* ── Expenses tab ── */}
           <TabsContent value="expenses" className="space-y-3 mt-4">
-            <div className="flex justify-end gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  className="pl-8 h-8 text-sm"
+                  placeholder="Hľadaj..."
+                  value={expSearch}
+                  onChange={(e) => setExpSearch(e.target.value)}
+                />
+              </div>
               <input ref={csvImportRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importFromCSV} />
               <Button size="sm" variant="outline" onClick={() => csvImportRef.current?.click()}>
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
@@ -785,6 +813,7 @@ export default function BudgetPage() {
               </Card>
             ) : (
               [...manualMonthExpenses, ...recurringVirtual]
+                .filter((e) => !expSearch || e.description.toLowerCase().includes(expSearch.toLowerCase()))
                 .sort((a, b) => b.date.localeCompare(a.date))
                 .map((e) => {
                   const isIncome = e.type === "income";

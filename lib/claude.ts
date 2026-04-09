@@ -46,7 +46,18 @@ export function buildGoalContexts(goals: FinancialGoal[], totalEur: number, rate
   }).filter((g) => g.progress < 100);
 }
 
-function buildPrompt(summary: PortfolioSummary, budget?: BudgetContext, goalContexts?: GoalContext[]): string {
+export interface ProfileContext {
+  age: number;
+  yearsToRetirement: number;
+}
+
+function buildPrompt(
+  summary: PortfolioSummary,
+  budget?: BudgetContext,
+  goalContexts?: GoalContext[],
+  profile?: ProfileContext,
+  insurance?: Insurance[]
+): string {
   const lines = summary.assets.map(
     (a) => `- ${a.label} (${a.category}): €${a.valueEur.toFixed(2)}`
   );
@@ -88,6 +99,29 @@ ${catLines.join("\n")}${largeExpLines}`;
     goalsSection = `\n\nFinančné ciele (nedosiahnuté):\n${goalLines.join("\n")}`;
   }
 
+  let profileSection = "";
+  if (profile) {
+    profileSection = `\n\nProfil investora:\n- Vek: ${profile.age} rokov\n- Roky do dôchodku: ${profile.yearsToRetirement}`;
+  }
+
+  let insuranceSection = "";
+  if (insurance !== undefined) {
+    const TYPE_LABELS_INS: Record<Insurance["type"], string> = {
+      car_liability: "PZP", car_comprehensive: "Havarijné", property: "Nehnuteľnosť",
+      life: "Životné", health: "Zdravotné/úrazové", travel: "Cestovné", other: "Iné",
+    };
+    const existing = insurance.map((ins) => `  - ${TYPE_LABELS_INS[ins.type]}: ${ins.provider}, ${ins.annualPremium} ${ins.currency}/rok`);
+    const coveredTypes = new Set(insurance.map((ins) => ins.type));
+    const missing: string[] = [];
+    if (!coveredTypes.has("life")) missing.push("Životné poistenie");
+    if (!coveredTypes.has("health")) missing.push("Zdravotné/úrazové poistenie");
+    if (!coveredTypes.has("property")) missing.push("Poistenie nehnuteľnosti");
+    const missingLine = missing.length > 0 ? `\nChýbajúce krycie: ${missing.join(", ")}` : "";
+    insuranceSection = `\n\nPoistenie:\n${existing.length > 0 ? existing.join("\n") : "  Žiadne poistenie"}${missingLine}`;
+  }
+
+  const taxSection = `\n\nSlovenský daňový kontext:\n- Akcie/ETF: oslobodenie od dane z príjmu po 1 roku držania (§ 9 ods. 1 písm. k zákona o dani z príjmov)\n- Dividendy: zrážková daň 7% (tuzemské), zahraničné dividendy + 14% zdravotný odvod\n- Kryptomeny: žiadne oslobodenie, zisk = príjem z ostatných zdrojov, sadzba 19%/25%\n- II. pilier: povinné dôchodkové sporenie, peniaze viazané do dôchodku`;
+
   const catTypes = budget && budget.topCategories.length > 0
     ? ` | "budget"`
     : "";
@@ -101,7 +135,7 @@ Rozloženie aktív:
 ${lines.join("\n")}
 
 Alokácia:
-${allocations.join("\n")}${budgetSection}${goalsSection}
+${allocations.join("\n")}${budgetSection}${goalsSection}${profileSection}${insuranceSection}${taxSection}
 
 Poskytni 5–8 konkrétnych odporúčaní vo formáte JSON. Každé odporúčanie musí obsahovať:
 - category: "allocation" | "risk" | "opportunity" | "warning"${catTypes}
@@ -114,7 +148,8 @@ Zohľadni:
 2. Riziko (volatilita krypta, koncentrácia komodít)
 3. Likviditu (hotovosť vs. nelikvidné aktíva)
 4. Slovenský kontext: "pension" = II. pilier (NIE III. pilier) — viazaný do dôchodku, nie je to doplnkové dôchodkové sporenie
-5. Ochranu pred infláciou${budget ? "\n6. Mieru úspor, kategórie kde sa míňa najviac, prekročené limity, jednotlivé veľké výdavky" : ""}${goalContexts?.length ? "\n7. Pokrok k finančným cieľom, realistickosť termínov" : ""}
+5. Ochranu pred infláciou${budget ? "\n6. Mieru úspor, kategórie kde sa míňa najviac, prekročené limity, jednotlivé veľké výdavky" : ""}${goalContexts?.length ? "\n7. Pokrok k finančným cieľom, realistickosť termínov" : ""}${profile ? "\n8. Vek, horizont investovania, vhodnosť rizikovosti portfólia" : ""}${insurance !== undefined ? "\n9. Krytie poistením — upozorni na chýbajúce životné/zdravotné/majetkové poistenie" : ""}
+10. Daňovú optimalizáciu: 1-ročné oslobodenie akcií/ETF, daňová efektivita krypta vs. akcií
 
 Odpovedaj VÝHRADNE validným JSON poľom, žiadny markdown, žiadne vysvetlenia.`;
 }
@@ -250,9 +285,11 @@ export async function fetchRecommendations(
   summary: PortfolioSummary,
   claudeApiKey: string,
   budget?: BudgetContext,
-  goals?: GoalContext[]
+  goals?: GoalContext[],
+  profile?: ProfileContext,
+  insurance?: Insurance[]
 ): Promise<Recommendation[]> {
-  const prompt = buildPrompt(summary, budget, goals);
+  const prompt = buildPrompt(summary, budget, goals, profile, insurance);
 
   const res = await fetch(CLAUDE_API, {
     method: "POST",

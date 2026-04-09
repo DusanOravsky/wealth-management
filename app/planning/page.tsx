@@ -9,11 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, RefreshCw } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { loadTargetAllocation, saveTargetAllocation, loadFireSettings, saveFireSettings, loadRecurringExpenses } from "@/lib/store";
+import { loadTargetAllocation, saveTargetAllocation, loadFireSettings, saveFireSettings, loadRecurringExpenses, loadExpenses } from "@/lib/store";
 import { FALLBACK_RATES } from "@/lib/constants";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -432,6 +432,41 @@ export default function PlanningPage() {
                     />
                   </div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => {
+                    const now = new Date();
+                    const allExp = loadExpenses();
+                    const recurring = loadRecurringExpenses();
+                    let totalSpent = 0;
+                    let totalInc = 0;
+                    for (let i = 0; i < 3; i++) {
+                      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                      const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                      totalSpent += allExp.filter((e) => e.date.startsWith(mk) && e.type !== "income").reduce((s, e) => s + e.amount, 0);
+                      totalSpent += recurring.filter((r) => {
+                        if (!r.active || r.type === "income") return false;
+                        if (r.frequency === "monthly") return true;
+                        return r.frequency === "annual" && (r.month ?? new Date(r.startDate).getMonth()) === d.getMonth();
+                      }).reduce((s, r) => s + r.amount, 0);
+                      totalInc += allExp.filter((e) => e.date.startsWith(mk) && e.type === "income").reduce((s, e) => s + e.amount, 0);
+                      totalInc += recurring.filter((r) => {
+                        if (!r.active || r.type !== "income") return false;
+                        if (r.frequency === "monthly") return true;
+                        return r.frequency === "annual" && (r.month ?? new Date(r.startDate).getMonth()) === d.getMonth();
+                      }).reduce((s, r) => s + r.amount, 0);
+                    }
+                    const avgExp = Math.round(totalSpent / 3);
+                    const avgInc = Math.round(totalInc / 3);
+                    if (avgExp > 0) setMonthlyExpenses(avgExp);
+                    if (avgInc > avgExp) setMonthlyContrib(Math.round(avgInc - avgExp));
+                  }}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Načítať z rozpočtu (posl. 3 mes.)
+                </Button>
               </CardContent>
             </Card>
 
