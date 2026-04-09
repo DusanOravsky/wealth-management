@@ -309,8 +309,9 @@ export default function GoalsPage() {
               const completedCount = goalMilestones.filter((m) => m.completedAt).length;
               const isExpanded = expandedGoals.has(goal.id);
 
+              const isAchieved = progress >= 100;
               let onTrack: boolean | null = null;
-              if (goal.deadline && days !== null && days > 0 && monthlySavings > 0 && progress < 100) {
+              if (!isAchieved && goal.deadline && days !== null && days > 0 && monthlySavings > 0) {
                 const monthsLeft = days / 30.44;
                 const rate = rates[goal.currency] ?? FALLBACK_RATES[goal.currency] ?? 1;
                 const remaining = goal.targetAmount - current;
@@ -342,7 +343,12 @@ export default function GoalsPage() {
                             {overdue ? "Presiahnutý" : days === 0 ? "Dnes!" : `${days}d`}
                           </Badge>
                         )}
-                        {onTrack !== null && (
+                        {isAchieved && (
+                          <Badge variant="secondary" className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 border-green-300">
+                            Dosiahnutý ✓
+                          </Badge>
+                        )}
+                        {!isAchieved && onTrack !== null && (
                           <Badge variant={onTrack ? "secondary" : "outline"} className={`text-xs ${onTrack ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 border-green-300" : "text-red-500 border-red-300"}`}>
                             {onTrack ? "Na ceste ✓" : "Pozadu ✗"}
                           </Badge>

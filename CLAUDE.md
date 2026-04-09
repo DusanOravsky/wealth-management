@@ -178,6 +178,9 @@ See `lib/types.ts` for full definitions.
 - Upcoming payments widget (7-day horizon from recurring expenses)
 - Goals widget: goals with deadline ≤30 days or progress ≥80%
 - Insurance expiry widget: policies expiring within 60 days
+- **Donut chart** in allocation card (PieChart innerRadius=45 outerRadius=68)
+- **Month-to-date diff** badge in hero card: compares `summary.totalEur` against latest snapshot before start of current month
+- FAB `/budget?add=1` — auto-opens add-expense dialog
 
 ### Commodities
 - Per-lot tracking with `purchaseDate` and `purchaseTotalEur`
@@ -196,6 +199,7 @@ See `lib/types.ts` for full definitions.
 - P&L + annual dividend income summary (4 cards)
 - Tabs: Pozície | História | Dividendy | Watchlist
 - Dividendy: sorted by annual EUR income, shows yield%/annual/monthly
+- **Dividend calendar:** 12-cell grid in Dividendy tab — quarterly assumption (months Mar/Jun/Sep/Dec); current month highlighted, past months dimmed. `dividendsByMonth` skips holdings where `getValueEur(s) <= 0`
 - Watchlist: target price, live price, % to target
 - Search filter on holdings (shown when >4 items)
 
@@ -237,6 +241,9 @@ See `lib/types.ts` for full definitions.
 - Per-goal milestone tracking (add/complete/delete) with completion dates
 - Milestone counter badge (e.g. "2/4") on each goal card
 - Expandable milestones section with check/uncheck toggle
+- **On-track badge:** "Na ceste ✓" (green) / "Pozadu ✗" (red) — shown when goal has deadline, days > 0, and `monthlySavings > 0`; badge condition: `monthlyInCurrency >= remaining / monthsLeft`
+- **"Dosiahnutý ✓"** green badge when `progress >= 100` (replaces on-track badge)
+- `monthlySavings` = recurring income minus recurring expenses (monthly normalized, lazy useState)
 
 ### Insurance
 - CSS timeline card (horizontal bars per policy, color-coded by expiry)
@@ -248,6 +255,9 @@ See `lib/types.ts` for full definitions.
 - Allocation: current vs target bar chart, deviation list, rebalancing suggestions
 - Liquidity breakdown card (liquid / semi-liquid / illiquid)
 - FIRE: number, progress, profile stats (age, savings rate)
+- **"Načítať z rozpočtu" button:** computes 3-month avg expenses → `setMonthlyExpenses`; recurring income−expenses → `setMonthlyContrib`
+- **30-year projection chart:** LineChart with 3 scenarios (conservative −2%, moderate, optimistic +3%) + red dashed FIRE reference line
+- **`calcMonthsToFIRE` Infinity guard:** `const years = isFinite(months) ? months / 12 : null` — targetYear only shown when finite
 - II. Pilier projector: 3 growth scenarios + monthly payout estimate
 
 ### Alerts
@@ -272,6 +282,11 @@ See `lib/types.ts` for full definitions.
 - `max_tokens: 2048` (1024 was too small → truncated JSON)
 - JSON extraction uses bracket-depth parser `extractJsonArray()` (regex was catching trailing text)
 - Both use `anthropic-dangerous-direct-browser-access: true` header
+- **Chat panel** (`app/advisor/page.tsx`): full conversation below recommendations; `buildChatSystemPrompt()` + `sendChatMessage()` — plain text response (no JSON)
+- `ChatMessage`: `{ role: "user" | "assistant"; content: string }` — full history sent on every message
+- Chat `sendChat()` guarded with `isMounted` ref to prevent setState after unmount
+- Profile context in recommendations: age + yearsToRetirement from `settings.birthYear` / `settings.retirementAge`
+- Tax section always included in recommendation prompt: stocks 1yr exemption, dividends 7%+14%, crypto income, II. pilier
 
 ---
 
@@ -288,6 +303,13 @@ See `lib/types.ts` for full definitions.
 - **`new Date()` in render body:** Move to `useState(() => new Date())` — `new Date()` as useMemo dep causes cache miss on every render
 - **FIRE `calcMonthsToFIRE`:** Already guards `r <= 0` (linear fallback). Whole-month amortization in `monthsElapsed()` is intentional — mortgage payments are monthly, not continuous
 - **`importBackup` / `importQRPayload`:** JSON.parse wrapped in try/catch; data typed as `Record<string, unknown>` — never trust raw JSON from clipboard/QR
+- **`isMounted` ref pattern:** use in any async function that calls setState — `const isMounted = useRef(true); useEffect(() => { isMounted.current = true; return () => { isMounted.current = false; }; }, []);` — guard all setState calls with `if (isMounted.current)`
+- **CSV import parser:** use `parseCSVLine()` (RFC-4180 aware) — NOT `split(/[,;]/)` which breaks on quoted fields with commas (e.g. `"Smith, John"`, `"1,234.56"`)
+- **`toEurSimple` fallback:** always `amount / (rate ?? 1)` — never `rate ? amount / rate : amount` which returns wrong-currency value when rate is missing
+- **Spending forecast:** returns `null` when `daysElapsed < 3` — avoids wild projections at month start
+- **`onTrack` badge in goals:** use `isAchieved = progress >= 100` before computing on-track — show "Dosiahnutý ✓" instead of on-track badge when complete
+- **`dividendsByMonth`:** skip `if (valueEur <= 0) continue` before computing dividend — avoids 0-valued calendar entries when live price not yet loaded
+- **`FALLBACK_RATES` lookup:** use `FALLBACK_RATES[e.currency ?? "EUR"]` — NOT `FALLBACK_RATES[e.currency as string]` (unsafe cast)
 
 ---
 

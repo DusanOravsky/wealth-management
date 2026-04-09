@@ -181,7 +181,7 @@ export default function BudgetPage() {
         .filter((e) => e.categoryId === cat.id)
         .reduce((s, e) => {
           if (e.currency === "EUR" || !e.currency) return s + e.amount;
-          const rate = (rates ?? {})[e.currency] ?? FALLBACK_RATES[e.currency as string] ?? 1;
+          const rate = (rates ?? {})[e.currency] ?? FALLBACK_RATES[e.currency ?? "EUR"] ?? 1;
           return s + e.amount / rate;
         }, 0);
       return acc;
@@ -278,10 +278,10 @@ export default function BudgetPage() {
     if (!isCurrentMonth || totalBudget <= 0) return null;
     const daysElapsed = now.getDate();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    if (daysElapsed <= 0) return null;
+    if (daysElapsed < 3) return null; // avoid wild forecast at start of month
     const onlyManualSpent = manualMonthExpenseOnly.reduce((s, e) => {
       if (e.currency === "EUR" || !e.currency) return s + e.amount;
-      const rate = (rates ?? {})[e.currency] ?? FALLBACK_RATES[e.currency as string] ?? 1;
+      const rate = (rates ?? {})[e.currency] ?? FALLBACK_RATES[e.currency ?? "EUR"] ?? 1;
       return s + e.amount / rate;
     }, 0);
     const dailyRate = onlyManualSpent / daysElapsed;
@@ -519,7 +519,29 @@ export default function BudgetPage() {
       const text = await file.text();
       const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
       if (lines.length < 2) { toast.error("CSV je prázdne."); return; }
-      const header = lines[0].split(/[,;]/).map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
+
+      // RFC-4180-compatible CSV line parser: handles quoted fields and commas/semicolons inside quotes
+      const parseCSVLine = (line: string): string[] => {
+        const cols: string[] = [];
+        let cur = "";
+        let inQuote = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (inQuote) {
+            if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+            else if (ch === '"') { inQuote = false; }
+            else { cur += ch; }
+          } else {
+            if (ch === '"') { inQuote = true; }
+            else if (ch === ',' || ch === ';') { cols.push(cur.trim()); cur = ""; }
+            else { cur += ch; }
+          }
+        }
+        cols.push(cur.trim());
+        return cols;
+      };
+
+      const header = parseCSVLine(lines[0]).map((h) => h.toLowerCase());
       const dateIdx = header.findIndex((h) => ["date","datum","dátum","booking date"].some((k) => h.includes(k)));
       const amountIdx = header.findIndex((h) => ["amount","suma","betrag","credit","debit","sum"].some((k) => h.includes(k)));
       const descIdx = header.findIndex((h) => ["description","popis","note","memo","text","reference","verwendung"].some((k) => h.includes(k)));
@@ -548,7 +570,7 @@ export default function BudgetPage() {
       };
       const imported: Expense[] = [];
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(/[,;]/).map((c) => c.trim().replace(/^"|"$/g, ""));
+        const cols = parseCSVLine(lines[i]);
         const rawAmount = parseFloat((cols[amountIdx] ?? "").replace(/\s/g, "").replace(",", "."));
         if (isNaN(rawAmount) || rawAmount <= 0) continue;
         const dateStr = dateIdx >= 0 ? cols[dateIdx] ?? "" : "";

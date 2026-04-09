@@ -113,7 +113,9 @@ export default function StocksPage() {
     const quarterlyMonths = [2, 5, 8, 11];
     for (const s of holdings) {
       if (!s.annualDividendYield) continue;
-      const annualDiv = getValueEur(s) * (s.annualDividendYield / 100);
+      const valueEur = getValueEur(s);
+      if (valueEur <= 0) continue;
+      const annualDiv = valueEur * (s.annualDividendYield / 100);
       const quarterlyDiv = annualDiv / 4;
       for (const m of quarterlyMonths) {
         monthTotals[m] += quarterlyDiv;

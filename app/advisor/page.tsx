@@ -51,6 +51,8 @@ export default function AdvisorPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const isMounted = useRef(true);
+  useEffect(() => { isMounted.current = true; return () => { isMounted.current = false; }; }, []);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -118,12 +120,14 @@ export default function AdvisorPage() {
 
     try {
       const reply = await sendChatMessage(newMessages, systemPrompt, claudeKey);
-      setChatMessages([...newMessages, { role: "assistant", content: reply }]);
+      if (isMounted.current) setChatMessages([...newMessages, { role: "assistant", content: reply }]);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Chyba";
-      toast.error(msg);
+      if (isMounted.current) {
+        const msg = e instanceof Error ? e.message : "Chyba";
+        toast.error(msg);
+      }
     } finally {
-      setChatLoading(false);
+      if (isMounted.current) setChatLoading(false);
     }
   }
 

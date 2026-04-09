@@ -72,8 +72,8 @@ function calcMonthlyPayment(loanAmount: number, annualRate: number, termYears: n
 
 function toEurSimple(amount: number, currency: string, rates: Record<string, number>): number {
   if (currency === "EUR") return amount;
-  const rate = rates[currency] ?? FALLBACK_RATES[currency];
-  return rate ? amount / rate : amount;
+  const rate = rates[currency] ?? FALLBACK_RATES[currency] ?? 1;
+  return amount / rate;
 }
 
 export default function PlanningPage() {
