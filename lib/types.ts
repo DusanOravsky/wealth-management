@@ -205,6 +205,7 @@ export interface Trip {
 export interface Expense {
   id: string;
   categoryId: string;
+  type?: "expense" | "income"; // undefined = expense (backwards compat)
   amount: number;
   currency: Currency;
   date: string; // YYYY-MM-DD

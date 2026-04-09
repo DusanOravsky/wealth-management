@@ -69,7 +69,7 @@ function getRecurringForMonth(recurring: RecurringExpense[], year: number, month
       categoryId: r.categoryId,
       amount: r.amount,
       currency: r.currency,
-      date: `${year}-${String(month + 1).padStart(2, "0")}-${String(r.dayOfMonth).padStart(2, "0")}`,
+      date: `${year}-${String(month + 1).padStart(2, "0")}-${String(Math.min(r.dayOfMonth, new Date(year, month + 1, 0).getDate())).padStart(2, "0")}`,
       description: r.description,
       _recurring: true,
     } as Expense & { _recurring?: boolean }));
@@ -120,7 +120,7 @@ export default function BudgetPage() {
   // Expense dialog
   const [expOpen, setExpOpen] = useState(false);
   const [editingExp, setEditingExp] = useState<Expense | null>(null);
-  const [expForm, setExpForm] = useState({ categoryId: "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: "" });
+  const [expForm, setExpForm] = useState({ type: "expense" as "expense" | "income", categoryId: "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: "" });
 
   // Trip dialog
   const [tripOpen, setTripOpen] = useState(false);
@@ -153,24 +153,40 @@ export default function BudgetPage() {
     [manualMonthExpenses, recurringVirtual]
   );
 
-  // Totals per category (includes recurring)
+  // Separate income entries from expense entries
+  const manualMonthIncomes = useMemo(
+    () => manualMonthExpenses.filter((e) => e.type === "income"),
+    [manualMonthExpenses]
+  );
+  const manualMonthExpenseOnly = useMemo(
+    () => manualMonthExpenses.filter((e) => e.type !== "income"),
+    [manualMonthExpenses]
+  );
+  const allMonthExpensesOnly = useMemo(
+    () => [...manualMonthExpenseOnly, ...recurringVirtual],
+    [manualMonthExpenseOnly, recurringVirtual]
+  );
+
+  // Totals per category (includes recurring, excludes income entries)
   const catTotals = useMemo(() => {
     return categories.reduce<Record<string, number>>((acc, cat) => {
-      acc[cat.id] = allMonthExpenses
+      acc[cat.id] = allMonthExpensesOnly
         .filter((e) => e.categoryId === cat.id)
         .reduce((s, e) => s + e.amount, 0);
       return acc;
     }, {});
-  }, [categories, allMonthExpenses]);
+  }, [categories, allMonthExpensesOnly]);
 
   const recurringIncome = useMemo(
     () => getRecurringIncomeForMonth(recurring, year, month),
     [recurring, year, month]
   );
+  const manualIncome = manualMonthIncomes.reduce((s, e) => s + e.amount, 0);
+  const totalIncome = recurringIncome + manualIncome;
   const totalSpent = Object.values(catTotals).reduce((s, v) => s + v, 0);
   const totalBudget = categories.reduce((s, c) => s + c.monthlyLimit, 0);
   const recurringMonthTotal = recurringVirtual.reduce((s, e) => s + e.amount, 0);
-  const cashFlow = recurringIncome - totalSpent;
+  const cashFlow = totalIncome - totalSpent;
 
   const chartData = categories
     .filter((c) => catTotals[c.id] > 0 || c.monthlyLimit > 0)
@@ -259,7 +275,7 @@ export default function BudgetPage() {
   // ── Expense CRUD ──
   function openAddExp(presetTripId?: string) {
     setEditingExp(null);
-    setExpForm({ categoryId: categories[0]?.id ?? "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: presetTripId ?? "" });
+    setExpForm({ type: "expense", categoryId: categories[0]?.id ?? "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: presetTripId ?? "" });
     setExpOpen(true);
   }
   function handleReceiptScanned(receipt: ParsedReceipt) {
@@ -273,16 +289,19 @@ export default function BudgetPage() {
   }
   function openEditExp(e: Expense) {
     setEditingExp(e);
-    setExpForm({ categoryId: e.categoryId, amount: e.amount, date: e.date, description: e.description, tripId: e.tripId ?? "" });
+    setExpForm({ type: e.type ?? "expense", categoryId: e.categoryId, amount: e.amount, date: e.date, description: e.description, tripId: e.tripId ?? "" });
     setExpOpen(true);
   }
   function saveExp() {
-    if (!expForm.categoryId || expForm.amount <= 0 || !expForm.description) {
-      toast.error("Vyplň kategóriu, sumu a popis."); return;
+    const isIncome = expForm.type === "income";
+    if (!isIncome && !expForm.categoryId) { toast.error("Vyplň kategóriu."); return; }
+    if (expForm.amount <= 0 || !expForm.description) {
+      toast.error("Vyplň sumu a popis."); return;
     }
     const entry: Expense = {
       id: editingExp?.id ?? crypto.randomUUID(),
-      categoryId: expForm.categoryId,
+      type: expForm.type,
+      categoryId: isIncome ? "" : expForm.categoryId,
       amount: expForm.amount,
       currency: "EUR",
       date: expForm.date,
@@ -326,7 +345,7 @@ export default function BudgetPage() {
     saveTrips(updated);
     setTrips(updated);
     setTripOpen(false);
-    toast.success(editingTrip ? "Výlet upravený." : "Výlet pridaný.");
+    toast.success(editingTrip ? "Skupina upravená." : "Skupina pridaná.");
   }
   function deleteTrip(id: string) {
     const updated = trips.filter((t) => t.id !== id);
@@ -336,7 +355,7 @@ export default function BudgetPage() {
     const updatedExp = expenses.map((e) => e.tripId === id ? { ...e, tripId: undefined } : e);
     saveExpenses(updatedExp);
     setExpenses(updatedExp);
-    toast.success("Výlet odstránený.");
+    toast.success("Skupina odstránená.");
   }
 
   // ── Category CRUD ──
@@ -383,8 +402,8 @@ export default function BudgetPage() {
     if (!recurForm.categoryId || recurForm.amount <= 0 || !recurForm.description) {
       toast.error("Vyplň kategóriu, sumu a popis."); return;
     }
-    if (!recurForm.dayOfMonth || recurForm.dayOfMonth < 1 || recurForm.dayOfMonth > 28) {
-      toast.error("Zadaj deň v mesiaci (1–28)."); return;
+    if (!recurForm.dayOfMonth || recurForm.dayOfMonth < 1 || recurForm.dayOfMonth > 31) {
+      toast.error("Zadaj deň v mesiaci (1–31)."); return;
     }
     const entry: RecurringExpense = { id: editingRecur?.id ?? crypto.randomUUID(), ...recurForm };
     const updated = editingRecur
@@ -489,12 +508,14 @@ export default function BudgetPage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {recurringIncome > 0 && (
+          {totalIncome > 0 && (
             <Card className="border-green-300 dark:border-green-700">
               <CardContent className="pt-4">
                 <p className="text-xs text-muted-foreground">Príjem</p>
-                <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{fmt(recurringIncome)}</p>
-                <p className="text-xs text-muted-foreground mt-1">pravidelný</p>
+                <p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{fmt(totalIncome)}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {recurringIncome > 0 && manualIncome > 0 ? `pravidelný + jednorazový` : recurringIncome > 0 ? "pravidelný" : "jednorazový"}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -514,13 +535,13 @@ export default function BudgetPage() {
               <p className="text-xs text-muted-foreground mt-1">{totalBudget > 0 ? `${((totalSpent / totalBudget) * 100).toFixed(0)}%` : "—"}</p>
             </CardContent>
           </Card>
-          <Card className={cashFlow < 0 ? "border-red-300 dark:border-red-700" : recurringIncome > 0 ? "border-green-300 dark:border-green-700" : ""}>
+          <Card className={cashFlow < 0 ? "border-red-300 dark:border-red-700" : totalIncome > 0 ? "border-green-300 dark:border-green-700" : ""}>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">{recurringIncome > 0 ? "Cash flow" : "Zostatok"}</p>
-              <p className={`text-2xl font-bold mt-1 ${cashFlow < 0 ? "text-red-600 dark:text-red-400" : recurringIncome > 0 ? "text-green-600 dark:text-green-400" : ""}`}>
-                {recurringIncome > 0 ? fmt(cashFlow) : fmt(totalBudget - totalSpent)}
+              <p className="text-xs text-muted-foreground">{totalIncome > 0 ? "Cash flow" : "Zostatok"}</p>
+              <p className={`text-2xl font-bold mt-1 ${cashFlow < 0 ? "text-red-600 dark:text-red-400" : totalIncome > 0 ? "text-green-600 dark:text-green-400" : ""}`}>
+                {totalIncome > 0 ? fmt(cashFlow) : fmt(totalBudget - totalSpent)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">{allMonthExpenses.length} výdavkov</p>
+              <p className="text-xs text-muted-foreground mt-1">{allMonthExpensesOnly.length} výdavkov</p>
             </CardContent>
           </Card>
         </div>
@@ -540,7 +561,7 @@ export default function BudgetPage() {
               </TabsTrigger>
               <TabsTrigger value="stats">Štatistiky</TabsTrigger>
               <TabsTrigger value="trips">
-                Výlety
+                Skupiny
                 {trips.length > 0 && (
                   <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{trips.length}</Badge>
                 )}
@@ -700,29 +721,31 @@ export default function BudgetPage() {
                 </Button>
               )}
             </div>
-            {allMonthExpenses.length === 0 ? (
+            {[...manualMonthExpenses, ...recurringVirtual].length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-muted-foreground">
-                  Žiadne výdavky pre {MONTH_NAMES[month]} {year}.
+                  Žiadne záznamy pre {MONTH_NAMES[month]} {year}.
                 </CardContent>
               </Card>
             ) : (
-              [...allMonthExpenses]
+              [...manualMonthExpenses, ...recurringVirtual]
                 .sort((a, b) => b.date.localeCompare(a.date))
                 .map((e) => {
-                  const cat = categories.find((c) => c.id === e.categoryId);
+                  const isIncome = e.type === "income";
+                  const cat = isIncome ? null : categories.find((c) => c.id === e.categoryId);
                   const isRecurring = (e as Expense & { _recurring?: boolean })._recurring;
                   const tripTag = e.tripId ? trips.find((t) => t.id === e.tripId) : null;
                   return (
-                    <Card key={e.id}>
+                    <Card key={e.id} className={isIncome ? "border-green-200 dark:border-green-800" : ""}>
                       <CardContent className="pt-3 pb-3 flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0"
-                          style={{ background: `${cat?.color ?? "#888"}20` }}>
-                          {cat?.icon ?? "📦"}
+                          style={{ background: isIncome ? "#10b98120" : `${cat?.color ?? "#888"}20` }}>
+                          {isIncome ? "💵" : (cat?.icon ?? "📦")}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <p className="text-sm font-medium truncate">{e.description}</p>
+                            {isIncome && <Badge variant="outline" className="text-xs shrink-0 text-green-600 border-green-300">Príjem</Badge>}
                             {isRecurring && <Badge variant="outline" className="text-xs shrink-0">Automatické</Badge>}
                             {tripTag && (
                               <Badge variant="secondary" className="text-xs shrink-0 gap-0.5">
@@ -731,10 +754,12 @@ export default function BudgetPage() {
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {cat?.name ?? "—"} · {new Date(e.date).toLocaleDateString("sk-SK")}
+                            {isIncome ? "Príjem" : (cat?.name ?? "—")} · {new Date(e.date).toLocaleDateString("sk-SK")}
                           </p>
                         </div>
-                        <p className="font-bold text-sm shrink-0">{fmt(e.amount)}</p>
+                        <p className={`font-bold text-sm shrink-0 ${isIncome ? "text-green-600 dark:text-green-400" : ""}`}>
+                          {isIncome ? "+" : ""}{fmt(e.amount)}
+                        </p>
                         {!isRecurring && (
                           <div className="flex gap-1 shrink-0">
                             <Button variant="ghost" size="icon" onClick={() => openEditExp(e)}><Pencil className="w-4 h-4" /></Button>
@@ -872,13 +897,13 @@ export default function BudgetPage() {
           {/* ── Trips tab ── */}
           <TabsContent value="trips" className="space-y-4 mt-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Skupinové výdavky na výlety a udalosti.</p>
-              <Button size="sm" onClick={openAddTrip}><Plus className="w-4 h-4 mr-2" />Nový výlet</Button>
+              <p className="text-sm text-muted-foreground hidden sm:block">Skupinové výdavky na výlety, udalosti a projekty.</p>
+              <Button size="sm" onClick={openAddTrip}><Plus className="w-4 h-4 mr-2" />Nová skupina</Button>
             </div>
             {trips.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-muted-foreground">
-                  Žiadne výlety. Pridaj výlet a priradí k nemu výdavky.
+                  Žiadne skupiny. Pridaj skupinu a priraď k nej výdavky.
                 </CardContent>
               </Card>
             ) : (
@@ -997,14 +1022,32 @@ export default function BudgetPage() {
       {/* Add/Edit expense dialog */}
       <Dialog open={expOpen} onOpenChange={setExpOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editingExp ? "Upraviť výdavok" : "Pridať výdavok"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingExp ? "Upraviť záznam" : "Pridať záznam"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            {!editingExp && (
+            {/* Income / Expense toggle */}
+            <div className="flex rounded-md overflow-hidden border">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 text-sm font-medium transition-colors ${expForm.type === "expense" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                onClick={() => setExpForm({ ...expForm, type: "expense" })}
+              >
+                Výdavok
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 text-sm font-medium transition-colors ${expForm.type === "income" ? "bg-green-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                onClick={() => setExpForm({ ...expForm, type: "income", categoryId: "" })}
+              >
+                Príjem
+              </button>
+            </div>
+            {!editingExp && expForm.type === "expense" && (
               <Button variant="outline" size="sm" className="w-full" onClick={() => setScanOpen(true)}>
                 <QrCode className="w-4 h-4 mr-2" />
                 Skenovať bloček (QR / čiarový kód)
               </Button>
             )}
+            {expForm.type === "expense" && (
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Kategória</label>
               <Select value={expForm.categoryId} onValueChange={(v) => setExpForm({ ...expForm, categoryId: v ?? "" })}>
@@ -1020,17 +1063,18 @@ export default function BudgetPage() {
                 </SelectContent>
               </Select>
             </div>
+            )}
             {trips.length > 0 && (
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Výlet / udalosť (voliteľné)</label>
+                <label className="text-xs text-muted-foreground mb-1 block">Skupina / udalosť (voliteľné)</label>
                 <Select value={expForm.tripId || "__none__"} onValueChange={(v) => setExpForm({ ...expForm, tripId: v === "__none__" ? "" : (v ?? "") })}>
                   <SelectTrigger>
                     <SelectValue>
-                      {selectedTripLabel ? `${selectedTripLabel.icon} ${selectedTripLabel.name}` : "— bez výletu —"}
+                      {selectedTripLabel ? `${selectedTripLabel.icon} ${selectedTripLabel.name}` : "— bez skupiny —"}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">— bez výletu —</SelectItem>
+                    <SelectItem value="__none__">— bez skupiny —</SelectItem>
                     {trips.map((t) => (
                       <SelectItem key={t.id} value={t.id}>{t.icon} {t.name}</SelectItem>
                     ))}
@@ -1171,7 +1215,7 @@ export default function BudgetPage() {
               )}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Deň v mesiaci</label>
-                <Input type="number" min="1" max="28" value={recurForm.dayOfMonth || ""} onChange={(e) => { const v = parseInt(e.target.value); setRecurForm({ ...recurForm, dayOfMonth: isNaN(v) ? 0 : Math.min(28, Math.max(1, v)) }); }} />
+                <Input type="number" min="1" max="31" value={recurForm.dayOfMonth || ""} onChange={(e) => { const v = parseInt(e.target.value); setRecurForm({ ...recurForm, dayOfMonth: isNaN(v) ? 0 : Math.min(31, Math.max(1, v)) }); }} />
               </div>
             </div>
             <div>
@@ -1188,7 +1232,7 @@ export default function BudgetPage() {
       {/* Add/Edit trip dialog */}
       <Dialog open={tripOpen} onOpenChange={setTripOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editingTrip ? "Upraviť výlet" : "Nový výlet"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingTrip ? "Upraviť skupinu" : "Nová skupina"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Ikona</label>
