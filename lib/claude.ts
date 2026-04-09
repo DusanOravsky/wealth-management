@@ -3,6 +3,7 @@ import type { PortfolioSummary, Recommendation, Insurance, BudgetCategory, Expen
 export interface BudgetContext {
   monthlyIncome: number;
   topCategories: { name: string; icon: string; monthlyAvg: number; limit: number }[];
+  largeExpenses: { description: string; amount: number; category: string; date: string }[];
 }
 
 export interface GoalContext {
@@ -62,6 +63,11 @@ function buildPrompt(summary: PortfolioSummary, budget?: BudgetContext, goalCont
     const catLines = budget.topCategories.map(
       (c) => `  - ${c.icon} ${c.name}: €${c.monthlyAvg.toFixed(0)}/mes${c.limit > 0 ? ` (limit €${c.limit})` : ""}`
     );
+    const largeExpLines = budget.largeExpenses?.length
+      ? `\n\nNajvyššie jednotlivé výdavky (posl. 3 mesiace):\n${budget.largeExpenses.map(
+          (e) => `  - ${e.description}: €${e.amount.toFixed(0)} (${e.category}, ${e.date})`
+        ).join("\n")}`
+      : "";
     budgetSection = `
 
 Mesačný rozpočet:
@@ -70,7 +76,7 @@ Mesačný rozpočet:
 - Úspora: €${savings.toFixed(0)}/mes (${savingsRate}% miera úspor)
 
 Výdavky podľa kategórií (mes. priemer):
-${catLines.join("\n")}`;
+${catLines.join("\n")}${largeExpLines}`;
   }
 
   let goalsSection = "";
@@ -107,8 +113,8 @@ Zohľadni:
 1. Diverzifikáciu naprieč triedami aktív
 2. Riziko (volatilita krypta, koncentrácia komodít)
 3. Likviditu (hotovosť vs. nelikvidné aktíva)
-4. Slovenský kontext (II. pilier je viazaný do dôchodku)
-5. Ochranu pred infláciou${budget ? "\n6. Mieru úspor, kategórie kde sa míňa najviac, prekročené limity" : ""}${goalContexts?.length ? "\n7. Pokrok k finančným cieľom, realistickosť termínov" : ""}
+4. Slovenský kontext: "pension" = II. pilier (NIE III. pilier) — viazaný do dôchodku, nie je to doplnkové dôchodkové sporenie
+5. Ochranu pred infláciou${budget ? "\n6. Mieru úspor, kategórie kde sa míňa najviac, prekročené limity, jednotlivé veľké výdavky" : ""}${goalContexts?.length ? "\n7. Pokrok k finančným cieľom, realistickosť termínov" : ""}
 
 Odpovedaj VÝHRADNE validným JSON poľom, žiadny markdown, žiadne vysvetlenia.`;
 }
@@ -227,7 +233,17 @@ export function buildBudgetContext(
 
   const monthlyIncome = recurringMonthlyIncome + manualMonthlyIncome;
 
-  return { monthlyIncome, topCategories };
+  // Top 5 largest individual expenses from the last 3 months
+  const largeExpenses = [...recent]
+    .filter((e) => e.type !== "income")
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5)
+    .map((e) => {
+      const cat = categories.find((c) => c.id === e.categoryId);
+      return { description: e.description, amount: e.amount, category: cat?.name ?? "Iné", date: e.date };
+    });
+
+  return { monthlyIncome, topCategories, largeExpenses };
 }
 
 export async function fetchRecommendations(
