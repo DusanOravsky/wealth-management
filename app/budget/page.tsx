@@ -383,6 +383,9 @@ export default function BudgetPage() {
     if (!recurForm.categoryId || recurForm.amount <= 0 || !recurForm.description) {
       toast.error("Vyplň kategóriu, sumu a popis."); return;
     }
+    if (!recurForm.dayOfMonth || recurForm.dayOfMonth < 1 || recurForm.dayOfMonth > 28) {
+      toast.error("Zadaj deň v mesiaci (1–28)."); return;
+    }
     const entry: RecurringExpense = { id: editingRecur?.id ?? crypto.randomUUID(), ...recurForm };
     const updated = editingRecur
       ? recurring.map((r) => r.id === editingRecur.id ? entry : r)
@@ -1168,7 +1171,7 @@ export default function BudgetPage() {
               )}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Deň v mesiaci</label>
-                <Input type="number" min="1" max="28" value={recurForm.dayOfMonth} onChange={(e) => setRecurForm({ ...recurForm, dayOfMonth: parseInt(e.target.value) || 1 })} />
+                <Input type="number" min="1" max="28" value={recurForm.dayOfMonth || ""} onChange={(e) => { const v = parseInt(e.target.value); setRecurForm({ ...recurForm, dayOfMonth: isNaN(v) ? 0 : Math.min(28, Math.max(1, v)) }); }} />
               </div>
             </div>
             <div>
