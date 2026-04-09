@@ -464,14 +464,17 @@ export default function BudgetPage() {
 
   return (
     <AppShell>
-      <div className="p-6 space-y-6 page-enter">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6 page-enter">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Výdavky & Rozpočet</h1>
             <p className="text-muted-foreground text-sm mt-1">Sleduj výdavky a mesačné limity</p>
           </div>
-          <Button size="sm" onClick={() => openAddExp()}><Plus className="w-4 h-4 mr-2" />Pridať výdavok</Button>
+          <Button size="sm" onClick={() => openAddExp()}>
+            <Plus className="w-4 h-4 md:mr-2" />
+            <span className="hidden md:inline">Pridať výdavok</span>
+          </Button>
         </div>
 
         {/* Month selector */}
@@ -520,26 +523,28 @@ export default function BudgetPage() {
         </div>
 
         <Tabs defaultValue="overview">
-          <TabsList>
-            <TabsTrigger value="overview">Prehľad</TabsTrigger>
-            <TabsTrigger value="expenses">Výdavky</TabsTrigger>
-            <TabsTrigger value="recurring">
-              Pravidelné
-              {recurring.filter((r) => r.active).length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">
-                  {recurring.filter((r) => r.active).length}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="stats">Štatistiky</TabsTrigger>
-            <TabsTrigger value="trips">
-              Výlety
-              {trips.length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{trips.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="categories">Kategórie</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="w-max min-w-full">
+              <TabsTrigger value="overview">Prehľad</TabsTrigger>
+              <TabsTrigger value="expenses">Výdavky</TabsTrigger>
+              <TabsTrigger value="recurring">
+                Pravidelné
+                {recurring.filter((r) => r.active).length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">
+                    {recurring.filter((r) => r.active).length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="stats">Štatistiky</TabsTrigger>
+              <TabsTrigger value="trips">
+                Výlety
+                {trips.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{trips.length}</Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="categories">Kategórie</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* ── Overview tab ── */}
           <TabsContent value="overview" className="space-y-6 mt-4">
@@ -613,13 +618,13 @@ export default function BudgetPage() {
                       const improved = delta < 0;
                       const unchanged = delta === 0;
                       return (
-                        <div key={cat.id} className="flex items-center gap-3">
-                          <span className="text-sm w-4">{cat.icon}</span>
+                        <div key={cat.id} className="flex items-center gap-2">
+                          <span className="text-sm w-4 shrink-0">{cat.icon}</span>
                           <span className="text-sm flex-1 min-w-0 truncate">{cat.name}</span>
-                          <span className="text-xs text-muted-foreground w-16 text-right tabular-nums">{fmt(prevSpent)}</span>
-                          <span className="text-muted-foreground text-xs">→</span>
-                          <span className="text-sm font-semibold w-16 text-right tabular-nums">{fmt(thisSpent)}</span>
-                          <span className={`flex items-center gap-0.5 text-xs w-16 justify-end tabular-nums ${improved ? "text-green-600" : delta > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                          <span className="hidden sm:block text-xs text-muted-foreground w-16 text-right tabular-nums shrink-0">{fmt(prevSpent)}</span>
+                          <span className="hidden sm:block text-muted-foreground text-xs shrink-0">→</span>
+                          <span className="text-sm font-semibold w-16 text-right tabular-nums shrink-0">{fmt(thisSpent)}</span>
+                          <span className={`flex items-center gap-0.5 text-xs w-14 justify-end tabular-nums shrink-0 ${improved ? "text-green-600" : delta > 0 ? "text-red-500" : "text-muted-foreground"}`}>
                             {unchanged ? (
                               <Minus className="w-3 h-3" />
                             ) : improved ? (
@@ -742,9 +747,9 @@ export default function BudgetPage() {
 
           {/* ── Recurring tab ── */}
           <TabsContent value="recurring" className="space-y-4 mt-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Príjmy a výdavky sa automaticky zarátavajú každý mesiac.</p>
-              <Button size="sm" onClick={openAddRecur}><Plus className="w-4 h-4 mr-2" />Pridať</Button>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground hidden sm:block">Príjmy a výdavky sa automaticky zarátavajú každý mesiac.</p>
+              <Button size="sm" onClick={openAddRecur} className="shrink-0"><Plus className="w-4 h-4 mr-2" />Pridať</Button>
             </div>
 
             {/* Income section */}
