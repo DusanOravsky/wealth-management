@@ -141,15 +141,17 @@ export default function BankPage() {
         </Card>
 
         <Tabs defaultValue="accounts">
-          <TabsList>
-            <TabsTrigger value="accounts">Účty</TabsTrigger>
-            <TabsTrigger value="transactions">
-              Transakcie
-              {transactions.length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{transactions.length}</Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="w-max min-w-full">
+              <TabsTrigger value="accounts">Účty</TabsTrigger>
+              <TabsTrigger value="transactions">
+                Transakcie
+                {transactions.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{transactions.length}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Accounts tab */}
           <TabsContent value="accounts" className="mt-4">

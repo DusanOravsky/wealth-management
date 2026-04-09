@@ -322,13 +322,15 @@ export default function CryptoPage() {
         )}
 
         <Tabs defaultValue="holdings">
-          <TabsList>
-            <TabsTrigger value="holdings">Pozície</TabsTrigger>
-            <TabsTrigger value="history">
-              História
-              {txs.length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{txs.length}</Badge>}
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="w-max min-w-full">
+              <TabsTrigger value="holdings">Pozície</TabsTrigger>
+              <TabsTrigger value="history">
+                História
+                {txs.length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{txs.length}</Badge>}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Holdings tab */}
           <TabsContent value="holdings" className="mt-4">

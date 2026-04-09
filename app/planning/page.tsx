@@ -186,12 +186,14 @@ export default function PlanningPage() {
         </div>
 
         <Tabs defaultValue="allocation">
-          <TabsList>
-            <TabsTrigger value="allocation">Alokácia</TabsTrigger>
-            <TabsTrigger value="fire">FIRE kalkulátor</TabsTrigger>
-            <TabsTrigger value="pension">II. Pilier</TabsTrigger>
-            <TabsTrigger value="cashflow">Cashflow</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="w-max min-w-full">
+              <TabsTrigger value="allocation">Alokácia</TabsTrigger>
+              <TabsTrigger value="fire">FIRE kalkulátor</TabsTrigger>
+              <TabsTrigger value="pension">II. Pilier</TabsTrigger>
+              <TabsTrigger value="cashflow">Cashflow</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* ── Allocation tab ── */}
           <TabsContent value="allocation" className="space-y-6 mt-4">

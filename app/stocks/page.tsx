@@ -235,16 +235,18 @@ export default function StocksPage() {
         </div>
 
         <Tabs defaultValue="holdings">
-          <div className="flex items-center justify-between">
-            <TabsList>
-              <TabsTrigger value="holdings">Pozície ({holdings.length})</TabsTrigger>
-              <TabsTrigger value="history">
-                História
-                {stockTxs.length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{stockTxs.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="dividends">Dividendy</TabsTrigger>
-              <TabsTrigger value="watchlist">Watchlist ({watchlist.length})</TabsTrigger>
-            </TabsList>
+          <div className="flex items-start gap-2">
+            <div className="overflow-x-auto flex-1">
+              <TabsList className="w-max min-w-full">
+                <TabsTrigger value="holdings">Pozície ({holdings.length})</TabsTrigger>
+                <TabsTrigger value="history">
+                  História
+                  {stockTxs.length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{stockTxs.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="dividends">Dividendy</TabsTrigger>
+                <TabsTrigger value="watchlist">Watchlist ({watchlist.length})</TabsTrigger>
+              </TabsList>
+            </div>
             <div>
               <TabsContent value="holdings" className="mt-0">
                 <Button size="sm" onClick={openAdd}><Plus className="w-4 h-4 mr-2" />Pridať</Button>

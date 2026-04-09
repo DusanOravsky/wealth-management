@@ -176,15 +176,17 @@ export default function PensionPage() {
         </div>
 
         <Tabs defaultValue="pension">
-          <TabsList>
-            <TabsTrigger value="pension">Fondy</TabsTrigger>
-            <TabsTrigger value="contributions">
-              Príspevky
-              {contributions.length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{contributions.length}</Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="w-max min-w-full">
+              <TabsTrigger value="pension">Fondy</TabsTrigger>
+              <TabsTrigger value="contributions">
+                Príspevky
+                {contributions.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">{contributions.length}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="pension" className="mt-4">
             {pension.length === 0 ? (
