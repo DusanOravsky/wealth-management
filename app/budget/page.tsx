@@ -274,7 +274,7 @@ export default function BudgetPage() {
       .map((cat) => {
         const thisSpent = catTotals[cat.id] ?? 0;
         const prevManual = expenses
-          .filter((e) => e.date.startsWith(prevMk) && e.categoryId === cat.id)
+          .filter((e) => e.date.startsWith(prevMk) && e.categoryId === cat.id && e.type !== "income")
           .reduce((s, e) => s + e.amount, 0);
         const prevRecurring = getRecurringForMonth(recurring, prevY, prevM)
           .filter((e) => e.categoryId === cat.id)
