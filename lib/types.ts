@@ -1,4 +1,4 @@
-export type Currency = "EUR" | "USD" | "CZK" | "GBP";
+export type Currency = "EUR" | "USD" | "CZK" | "GBP" | "CHF" | "PLN";
 
 export interface Commodity {
   id: string;

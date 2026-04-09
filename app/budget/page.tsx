@@ -20,7 +20,9 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, T
 import { toast } from "sonner";
 import { haptic } from "@/lib/haptic";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
-import type { BudgetCategory, Expense, RecurringExpense, Trip } from "@/lib/types";
+import type { BudgetCategory, Expense, RecurringExpense, Trip, Currency } from "@/lib/types";
+import { FALLBACK_RATES } from "@/lib/constants";
+import { useApp } from "@/context/AppContext";
 import type { ParsedReceipt } from "@/components/ReceiptScannerDialog";
 import { BudgetStats } from "@/components/modules/BudgetStats";
 
@@ -104,6 +106,7 @@ const EMPTY_RECUR: Omit<RecurringExpense, "id"> = {
 };
 
 export default function BudgetPage() {
+  const { rates } = useApp();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -124,7 +127,7 @@ export default function BudgetPage() {
   // Expense dialog
   const [expOpen, setExpOpen] = useState(false);
   const [editingExp, setEditingExp] = useState<Expense | null>(null);
-  const [expForm, setExpForm] = useState({ type: "expense" as "expense" | "income", categoryId: "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: "" });
+  const [expForm, setExpForm] = useState({ type: "expense" as "expense" | "income", categoryId: "", amount: 0, currency: "EUR" as Currency, date: today.toISOString().slice(0, 10), description: "", tripId: "" });
 
   // Trip dialog
   const [tripOpen, setTripOpen] = useState(false);
@@ -171,15 +174,19 @@ export default function BudgetPage() {
     [manualMonthExpenseOnly, recurringVirtual]
   );
 
-  // Totals per category (includes recurring, excludes income entries)
+  // Totals per category (includes recurring, excludes income entries) — converted to EUR
   const catTotals = useMemo(() => {
     return categories.reduce<Record<string, number>>((acc, cat) => {
       acc[cat.id] = allMonthExpensesOnly
         .filter((e) => e.categoryId === cat.id)
-        .reduce((s, e) => s + e.amount, 0);
+        .reduce((s, e) => {
+          if (e.currency === "EUR" || !e.currency) return s + e.amount;
+          const rate = (rates ?? {})[e.currency] ?? FALLBACK_RATES[e.currency as string] ?? 1;
+          return s + e.amount / rate;
+        }, 0);
       return acc;
     }, {});
-  }, [categories, allMonthExpensesOnly]);
+  }, [categories, allMonthExpensesOnly, rates]);
 
   // 80% and 100% budget limit notifications
   useEffect(() => {
@@ -264,6 +271,25 @@ export default function BudgetPage() {
       .reduce((s, r) => s + r.amount, 0);
   }, [recurring, year, month]);
 
+  // Spending forecast for current month
+  const spendingForecast = useMemo(() => {
+    const now = new Date();
+    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+    if (!isCurrentMonth || totalBudget <= 0) return null;
+    const daysElapsed = now.getDate();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    if (daysElapsed <= 0) return null;
+    const onlyManualSpent = manualMonthExpenseOnly.reduce((s, e) => {
+      if (e.currency === "EUR" || !e.currency) return s + e.amount;
+      const rate = (rates ?? {})[e.currency] ?? FALLBACK_RATES[e.currency as string] ?? 1;
+      return s + e.amount / rate;
+    }, 0);
+    const dailyRate = onlyManualSpent / daysElapsed;
+    const projectedManual = dailyRate * daysInMonth;
+    const projectedTotal = projectedManual + recurringMonthTotal;
+    return { projectedTotal, overBudget: projectedTotal - totalBudget };
+  }, [year, month, manualMonthExpenseOnly, recurringMonthTotal, totalBudget, rates]);
+
   // Month-over-month comparison per category
   const momData = useMemo(() => {
     const prevD = new Date(year, month - 1, 1);
@@ -321,7 +347,7 @@ export default function BudgetPage() {
   // ── Expense CRUD ──
   function openAddExp(presetTripId?: string) {
     setEditingExp(null);
-    setExpForm({ type: "expense", categoryId: categories[0]?.id ?? "", amount: 0, date: today.toISOString().slice(0, 10), description: "", tripId: presetTripId ?? "" });
+    setExpForm({ type: "expense", categoryId: categories[0]?.id ?? "", amount: 0, currency: "EUR", date: today.toISOString().slice(0, 10), description: "", tripId: presetTripId ?? "" });
     setExpOpen(true);
   }
   function handleReceiptScanned(receipt: ParsedReceipt) {
@@ -335,7 +361,7 @@ export default function BudgetPage() {
   }
   function openEditExp(e: Expense) {
     setEditingExp(e);
-    setExpForm({ type: e.type ?? "expense", categoryId: e.categoryId, amount: e.amount, date: e.date, description: e.description, tripId: e.tripId ?? "" });
+    setExpForm({ type: e.type ?? "expense", categoryId: e.categoryId, amount: e.amount, currency: (e.currency ?? "EUR") as Currency, date: e.date, description: e.description, tripId: e.tripId ?? "" });
     setExpOpen(true);
   }
   function saveExp() {
@@ -349,7 +375,7 @@ export default function BudgetPage() {
       type: expForm.type,
       categoryId: isIncome ? "" : expForm.categoryId,
       amount: expForm.amount,
-      currency: "EUR",
+      currency: expForm.currency,
       date: expForm.date,
       description: expForm.description,
       ...(expForm.tripId ? { tripId: expForm.tripId } : {}),
@@ -659,6 +685,16 @@ export default function BudgetPage() {
                 </CardContent>
               </Card>
             )}
+            {spendingForecast && spendingForecast.overBudget > 0 && (
+              <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950">
+                <CardContent className="pt-3 pb-3 flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5 text-amber-600 shrink-0" />
+                  <p className="text-sm">
+                    Pri aktuálnom tempe minutieš tento mesiac <strong className="text-amber-700 dark:text-amber-300">{fmt(spendingForecast.projectedTotal)}</strong> — o <strong className="text-red-600">{fmt(spendingForecast.overBudget)}</strong> nad limit.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
             {chartData.length > 0 && (
               <Card>
                 <CardHeader><CardTitle className="text-base">Minuté vs. limit</CardTitle></CardHeader>
@@ -842,9 +878,14 @@ export default function BudgetPage() {
                             {isIncome ? "Príjem" : (cat?.name ?? "—")} · {new Date(e.date).toLocaleDateString("sk-SK")}
                           </p>
                         </div>
-                        <p className={`font-bold text-sm shrink-0 ${isIncome ? "text-green-600 dark:text-green-400" : ""}`}>
-                          {isIncome ? "+" : ""}{fmt(e.amount)}
-                        </p>
+                        <div className="text-right shrink-0">
+                          <p className={`font-bold text-sm ${isIncome ? "text-green-600 dark:text-green-400" : ""}`}>
+                            {isIncome ? "+" : ""}{fmt(e.currency && e.currency !== "EUR" ? (() => { const rate = (rates ?? {})[e.currency] ?? FALLBACK_RATES[e.currency as string] ?? 1; return e.amount / rate; })() : e.amount)}
+                          </p>
+                          {e.currency && e.currency !== "EUR" && (
+                            <span className="text-xs text-muted-foreground">{e.amount} {e.currency}</span>
+                          )}
+                        </div>
                         {!isRecurring && (
                           <div className="flex gap-1 shrink-0">
                             <Button variant="ghost" size="icon" onClick={() => openEditExp(e)}><Pencil className="w-4 h-4" /></Button>
@@ -1187,7 +1228,7 @@ export default function BudgetPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Suma (€)</label>
+                <label className="text-xs text-muted-foreground mb-1 block">Suma</label>
                 <Input type="number" step="0.01" min="0" value={expForm.amount || ""} onChange={(e) => setExpForm({ ...expForm, amount: parseFloat(e.target.value) || 0 })} />
               </div>
               <div>
@@ -1195,6 +1236,21 @@ export default function BudgetPage() {
                 <Input type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} />
               </div>
             </div>
+            {expForm.type === "expense" && (
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Mena</label>
+                <Select value={expForm.currency} onValueChange={(v) => setExpForm({ ...expForm, currency: (v ?? "EUR") as Currency })}>
+                  <SelectTrigger>
+                    <SelectValue>{expForm.currency}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["EUR", "USD", "CZK", "GBP", "CHF", "PLN"] as Currency[]).map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setExpOpen(false)}>Zrušiť</Button>

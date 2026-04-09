@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Plus, Trash2, Target, ChevronDown, ChevronUp, CheckCircle2, Circle, Flag } from "lucide-react";
 import { CURRENCIES, FALLBACK_RATES, CURRENCY_SYMBOLS } from "@/lib/constants";
 import type { Currency, FinancialGoal, GoalMilestone } from "@/lib/types";
-import { loadGoalMilestones, saveGoalMilestones } from "@/lib/store";
+import { loadGoalMilestones, saveGoalMilestones, loadRecurringExpenses } from "@/lib/store";
 import { toast } from "sonner";
 
 const GOAL_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#f97316", "#3b82f6", "#ec4899"];
@@ -44,6 +44,14 @@ export default function GoalsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const [monthlySavings] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    const recurring = loadRecurringExpenses();
+    const inc = recurring.filter(r => r.active && r.type === "income").reduce((s, r) => s + (r.frequency === "monthly" ? r.amount : r.amount / 12), 0);
+    const exp = recurring.filter(r => r.active && r.type !== "income").reduce((s, r) => s + (r.frequency === "monthly" ? r.amount : r.amount / 12), 0);
+    return Math.max(0, inc - exp);
+  });
 
   const [milestones, setMilestones] = useState<GoalMilestone[]>([]);
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set());
@@ -301,6 +309,16 @@ export default function GoalsPage() {
               const completedCount = goalMilestones.filter((m) => m.completedAt).length;
               const isExpanded = expandedGoals.has(goal.id);
 
+              let onTrack: boolean | null = null;
+              if (goal.deadline && days !== null && days > 0 && monthlySavings > 0 && progress < 100) {
+                const monthsLeft = days / 30.44;
+                const rate = rates[goal.currency] ?? FALLBACK_RATES[goal.currency] ?? 1;
+                const remaining = goal.targetAmount - current;
+                const monthlyNeeded = remaining > 0 ? remaining / monthsLeft : 0;
+                const monthlyInCurrency = monthlySavings * rate;
+                onTrack = monthlyInCurrency >= monthlyNeeded;
+              }
+
               return (
                 <Card key={goal.id}>
                   <CardContent className="pt-5">
@@ -322,6 +340,11 @@ export default function GoalsPage() {
                         {goal.deadline && (
                           <Badge variant={overdue ? "destructive" : "secondary"} className="text-xs">
                             {overdue ? "Presiahnutý" : days === 0 ? "Dnes!" : `${days}d`}
+                          </Badge>
+                        )}
+                        {onTrack !== null && (
+                          <Badge variant={onTrack ? "secondary" : "outline"} className={`text-xs ${onTrack ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 border-green-300" : "text-red-500 border-red-300"}`}>
+                            {onTrack ? "Na ceste ✓" : "Pozadu ✗"}
                           </Badge>
                         )}
                         <Button

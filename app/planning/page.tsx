@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Pencil, Check, X, RefreshCw } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  LineChart, Line, ReferenceLine,
 } from "recharts";
 import { loadTargetAllocation, saveTargetAllocation, loadFireSettings, saveFireSettings, loadRecurringExpenses, loadExpenses } from "@/lib/store";
 import { FALLBACK_RATES } from "@/lib/constants";
@@ -132,6 +133,18 @@ export default function PlanningPage() {
   const currentYear = new Date().getFullYear();
   const targetYear = years != null ? currentYear + Math.ceil(years) : null;
   const progressPct = Math.min(100, (total / fireNumber) * 100);
+
+  const projectionData = useMemo(() => {
+    return Array.from({ length: 31 }, (_, i) => {
+      const m = i * 12;
+      return {
+        year: i === 0 ? "Dnes" : `+${i}r`,
+        conservative: Math.round(calcFV(total, monthlyContrib, Math.max(0, annualReturn - 2), m)),
+        moderate: Math.round(calcFV(total, monthlyContrib, annualReturn, m)),
+        optimistic: Math.round(calcFV(total, monthlyContrib, annualReturn + 3, m)),
+      };
+    });
+  }, [total, monthlyContrib, annualReturn]);
 
   // Liquidity breakdown
   const liquidityData = useMemo(() => LIQUIDITY_GROUPS.map((g) => ({
@@ -577,6 +590,36 @@ export default function PlanningPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {(total > 0 || monthlyContrib > 0) && (
+              <Card>
+                <CardHeader><CardTitle className="text-base">Projekcia čistého majetku (30 rokov)</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="flex gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400 inline-block" /> Konzervatívna ({Math.max(0, annualReturn - 2)}%)</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-indigo-600 inline-block" /> Stredná ({annualReturn}%)</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500 inline-block" /> Optimistická ({annualReturn + 3}%)</span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={projectionData}>
+                      <CartesianGrid strokeDasharray="3 3" className="opacity-40" />
+                      <XAxis dataKey="year" tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+                        interval={4} />
+                      <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+                        tickFormatter={(v: number) => `€${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip formatter={(v) => [`€${Number(v).toLocaleString("sk-SK")}`, ""]} />
+                      {fireNumber > 0 && (
+                        <ReferenceLine y={fireNumber} stroke="#ef4444" strokeDasharray="4 4"
+                          label={{ value: "FIRE", position: "insideTopRight", fontSize: 10, fill: "#ef4444" }} />
+                      )}
+                      <Line type="monotone" dataKey="conservative" stroke="#60a5fa" strokeWidth={1.5} dot={false} name={`Konzervatívna (${Math.max(0, annualReturn - 2)}%)`} />
+                      <Line type="monotone" dataKey="moderate" stroke="#6366f1" strokeWidth={2.5} dot={false} name={`Stredná (${annualReturn}%)`} />
+                      <Line type="monotone" dataKey="optimistic" stroke="#10b981" strokeWidth={1.5} dot={false} name={`Optimistická (${annualReturn + 3}%)`} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* ── Pension projector tab ── */}

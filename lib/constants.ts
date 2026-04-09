@@ -29,13 +29,15 @@ export const BINANCE_BASE = "https://api.binance.com";
 // Default crypto symbols to show if no holdings (used with CoinCap)
 export const DEFAULT_CRYPTO_SYMBOLS = ["BTC", "ETH", "BNB", "SOL"];
 
-export const CURRENCIES = ["EUR", "USD", "CZK", "GBP"] as const;
+export const CURRENCIES = ["EUR", "USD", "CZK", "GBP", "CHF", "PLN"] as const;
 
 export const CURRENCY_SYMBOLS: Record<string, string> = {
   EUR: "€",
   USD: "$",
   CZK: "Kč",
   GBP: "£",
+  CHF: "Fr",
+  PLN: "zł",
 };
 
 // Approximate exchange rates as "1 EUR = X currency" (same format as open.er-api.com)
@@ -44,6 +46,8 @@ export const FALLBACK_RATES: Record<string, number> = {
   USD: 1.09,
   CZK: 25.3,
   GBP: 0.85,
+  CHF: 0.96,
+  PLN: 4.25,
 };
 
 export const PIN_MIN_LENGTH = 4;

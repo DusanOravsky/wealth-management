@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
 } from "recharts";
 import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard, CalendarClock, Target, ShieldAlert, Plus, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -219,6 +220,17 @@ export default function DashboardPage() {
   const snapshotGain = lastSnap - firstSnap;
   const snapshotGainPct = firstSnap > 0 ? ((snapshotGain / firstSnap) * 100).toFixed(1) : null;
 
+  // Month-to-date change: compare with latest snapshot before start of current month
+  const [monthDiff, monthDiffPct] = React.useMemo(() => {
+    const now = new Date();
+    const monthStartStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const prevSnap = [...snapshots].reverse().find((s) => s.date < monthStartStr);
+    if (!prevSnap || !summary) return [null, null] as [null, null];
+    const diff = summary.totalEur - prevSnap.totalEur;
+    const diffPct = prevSnap.totalEur > 0 ? ((diff / prevSnap.totalEur) * 100).toFixed(1) : null;
+    return [diff, diffPct] as [number, string | null];
+  }, [snapshots, summary]);
+
   const totalRaw = Math.round((summary?.totalEur ?? 0) * displayRate);
   const animatedTotal = useCountUp(totalRaw);
   const isLoading = (portfolioLoading || pricesLoading) && !summary;
@@ -314,6 +326,19 @@ export default function DashboardPage() {
               <span className="text-muted-foreground text-xs">posledných {chartRange} dní</span>
             </div>
           )}
+          {monthDiff !== null && monthDiffPct !== null && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
+                ${monthDiff >= 0
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                  : "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300"}`}>
+                {monthDiff >= 0
+                  ? <TrendingUp className="w-3.5 h-3.5" />
+                  : <TrendingDown className="w-3.5 h-3.5" />}
+                Tento mes.: {monthDiff >= 0 ? "+" : ""}{displaySymbol}{Math.abs(Math.round(monthDiff * displayRate)).toLocaleString("sk-SK")} ({monthDiffPct}%)
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Category cards */}
@@ -358,7 +383,29 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {pieData.length > 0 ? (
-                <div className="space-y-3">
+                <>
+                  {pieTotal > 0 && (
+                    <ResponsiveContainer width="100%" height={160}>
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={68}
+                          paddingAngle={2}
+                          dataKey="value"
+                          startAngle={90}
+                          endAngle={-270}
+                        >
+                          {pieData.map((d, i) => (
+                            <Cell key={i} fill={d.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                  <div className="space-y-3">
                   {[...pieData]
                     .sort((a, b) => b.value - a.value)
                     .map((item) => {
@@ -396,7 +443,8 @@ export default function DashboardPage() {
                         <div key={item.name}>{inner}</div>
                       );
                     })}
-                </div>
+                  </div>
+                </>
               ) : (
                 <EmptyState
                   icon={LayoutDashboard}

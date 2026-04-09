@@ -104,6 +104,24 @@ export default function StocksPage() {
     return sum + getValueEur(s) * (s.annualDividendYield / 100);
   }, 0), [holdings, rates, stockPrices]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const MONTH_NAMES_SHORT = ["Jan","Feb","Mar","Apr","Máj","Jún","Júl","Aug","Sep","Okt","Nov","Dec"];
+  const currentMonth = new Date().getMonth();
+
+  // Dividend calendar — quarterly assumption (Mar/Jun/Sep/Dec = months 2,5,8,11)
+  const dividendsByMonth = useMemo(() => {
+    const monthTotals = Array(12).fill(0) as number[];
+    const quarterlyMonths = [2, 5, 8, 11];
+    for (const s of holdings) {
+      if (!s.annualDividendYield) continue;
+      const annualDiv = getValueEur(s) * (s.annualDividendYield / 100);
+      const quarterlyDiv = annualDiv / 4;
+      for (const m of quarterlyMonths) {
+        monthTotals[m] += quarterlyDiv;
+      }
+    }
+    return monthTotals;
+  }, [holdings, rates, stockPrices]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function openAdd() { setEditing(null); setForm(EMPTY); setOpen(true); }
   function openEdit(s: StockHolding) {
     setEditing(s);
@@ -378,6 +396,26 @@ export default function StocksPage() {
               <Card><CardContent className="py-10 text-center text-muted-foreground">Žiadne akcie s dividendovým výnosom. Nastav Annual Dividend Yield pri akciách.</CardContent></Card>
             ) : (
               <>
+                <Card>
+                  <CardContent className="pt-4">
+                    <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-3">Odhadovaný kalendár (kvartálne)</p>
+                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                      {MONTH_NAMES_SHORT.map((name, i) => {
+                        const div = dividendsByMonth[i];
+                        const isPast = i < currentMonth;
+                        const isCurrentM = i === currentMonth;
+                        return (
+                          <div key={i} className={`rounded-lg p-2 text-center border transition-colors ${isCurrentM ? "border-primary bg-primary/5" : isPast ? "opacity-50" : "border-border"}`}>
+                            <p className="text-xs text-muted-foreground">{name}</p>
+                            <p className={`text-sm font-semibold mt-0.5 ${div > 0 ? (isPast ? "text-muted-foreground" : "text-green-600 dark:text-green-400") : "text-muted-foreground"}`}>
+                              {div > 0 ? `€${div.toFixed(0)}` : "—"}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
                 <Card>
                   <CardContent className="pt-4 space-y-2">
                     <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Ročný príjem z dividend</p>
