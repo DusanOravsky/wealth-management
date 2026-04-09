@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useApp, getDecryptedKey } from "@/context/AppContext";
-import { loadRecommendations, saveRecommendations, loadExpenses, loadBudgetCategories, loadRecurringExpenses } from "@/lib/store";
-import { fetchRecommendations, buildBudgetContext } from "@/lib/claude";
+import { loadRecommendations, saveRecommendations, loadExpenses, loadBudgetCategories, loadRecurringExpenses, loadGoals } from "@/lib/store";
+import { fetchRecommendations, buildBudgetContext, buildGoalContexts } from "@/lib/claude";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +58,8 @@ export default function AdvisorPage() {
     setError(null);
     try {
       const budget = buildBudgetContext(loadExpenses(), loadBudgetCategories(), loadRecurringExpenses());
-      const recs = await fetchRecommendations(summary, claudeKey, budget);
+      const goals = buildGoalContexts(loadGoals(), summary.totalEur, {});
+      const recs = await fetchRecommendations(summary, claudeKey, budget, goals);
       setRecommendations(recs);
       saveRecommendations(recs);
       toast.success("Odporúčania vygenerované.");

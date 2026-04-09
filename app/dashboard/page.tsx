@@ -12,10 +12,10 @@ import { Badge } from "@/components/ui/badge";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard, CalendarClock, Target, ShieldAlert } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Coins, Wallet, Building2, Bitcoin, PiggyBank, LineChart, Home, LayoutDashboard, CalendarClock, Target, ShieldAlert, Plus, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
-import { loadRecurringExpenses, loadInsurance, loadGoals } from "@/lib/store";
+import { loadRecurringExpenses, loadInsurance, loadGoals, loadExpenses } from "@/lib/store";
 import type { RecurringExpense, Insurance, FinancialGoal } from "@/lib/types";
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -101,6 +101,52 @@ function getUpcomingRecurring(days = 7): Array<RecurringExpense & { dueDate: Dat
   return results.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
 }
 
+interface MonthlyCashflow {
+  totalIncome: number;
+  totalExpenses: number;
+  net: number;
+  daysUntilPay: number | null;
+  nextPayAmount: number;
+}
+
+function getCurrentMonthCashflow(): MonthlyCashflow {
+  if (typeof window === "undefined") return { totalIncome: 0, totalExpenses: 0, net: 0, daysUntilPay: null, nextPayAmount: 0 };
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const mk = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const expenses = loadExpenses();
+  const recurring = loadRecurringExpenses();
+
+  const isActiveInMonth = (r: RecurringExpense) => {
+    if (!r.active) return false;
+    const rStart = new Date(r.startDate);
+    if (rStart > new Date(year, month + 1, 0)) return false;
+    if (r.frequency === "monthly") return true;
+    return r.frequency === "annual" && (r.month ?? new Date(r.startDate).getMonth()) === month;
+  };
+
+  const manualExpenses = expenses.filter((e) => e.date.startsWith(mk) && e.type !== "income").reduce((s, e) => s + e.amount, 0);
+  const manualIncome = expenses.filter((e) => e.date.startsWith(mk) && e.type === "income").reduce((s, e) => s + e.amount, 0);
+  const recurExpenses = recurring.filter((r) => r.type === "expense" && isActiveInMonth(r)).reduce((s, r) => s + r.amount, 0);
+  const recurIncome = recurring.filter((r) => r.type === "income" && isActiveInMonth(r)).reduce((s, r) => s + r.amount, 0);
+
+  const totalIncome = manualIncome + recurIncome;
+  const totalExpenses = manualExpenses + recurExpenses;
+
+  // Next pay day from monthly recurring income
+  const paySource = recurring.filter((r) => r.active && r.type === "income" && r.frequency === "monthly")
+    .sort((a, b) => a.dayOfMonth - b.dayOfMonth)[0];
+  let daysUntilPay: number | null = null;
+  if (paySource) {
+    let payDay = new Date(year, month, paySource.dayOfMonth);
+    if (payDay <= now) payDay = new Date(year, month + 1, paySource.dayOfMonth);
+    daysUntilPay = Math.ceil((payDay.getTime() - now.getTime()) / 86400000);
+  }
+
+  return { totalIncome, totalExpenses, net: totalIncome - totalExpenses, daysUntilPay, nextPayAmount: paySource?.amount ?? 0 };
+}
+
 function fmtNum(val: number, currency = "EUR", rates: Record<string, number> = {}) {
   const rate = rates[currency] ?? FALLBACK_RATES[currency] ?? 1;
   return new Intl.NumberFormat("sk-SK", {
@@ -172,6 +218,7 @@ export default function DashboardPage() {
   const animatedTotal = useCountUp(totalRaw);
   const isLoading = (portfolioLoading || pricesLoading) && !summary;
   const [upcomingPayments] = useState(() => getUpcomingRecurring(7));
+  const [cashflow] = useState<MonthlyCashflow>(() => getCurrentMonthCashflow());
   const [dashGoals] = useState<FinancialGoal[]>(() => typeof window !== "undefined" ? loadGoals() : []);
   const [dashInsurance] = useState<Insurance[]>(() => typeof window !== "undefined" ? loadInsurance() : []);
 
@@ -688,7 +735,71 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Monthly cashflow widget */}
+        {(cashflow.totalIncome > 0 || cashflow.totalExpenses > 0) && (
+          <Card className="shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-muted-foreground" />
+                Cashflow tento mesiac
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-1 text-green-600 dark:text-green-400 mb-0.5">
+                    <ArrowDownLeft className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">Príjmy</span>
+                  </div>
+                  <p className="text-base font-bold text-green-600 dark:text-green-400">
+                    {new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cashflow.totalIncome)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-1 text-red-500 mb-0.5">
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">Výdavky</span>
+                  </div>
+                  <p className="text-base font-bold text-red-500">
+                    {new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cashflow.totalExpenses)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">Zostatok</p>
+                  <p className={`text-base font-bold ${cashflow.net >= 0 ? "text-primary" : "text-red-500"}`}>
+                    {new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cashflow.net)}
+                  </p>
+                </div>
+              </div>
+              {cashflow.totalIncome > 0 && cashflow.totalExpenses > 0 && (
+                <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-red-400 transition-all"
+                    style={{ width: `${Math.min(100, (cashflow.totalExpenses / cashflow.totalIncome) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {cashflow.daysUntilPay !== null && (
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  {cashflow.daysUntilPay === 0
+                    ? `Dnes príde výplata ${new Intl.NumberFormat("sk-SK", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cashflow.nextPayAmount)}`
+                    : `Do výplaty ${cashflow.daysUntilPay} ${cashflow.daysUntilPay === 1 ? "deň" : cashflow.daysUntilPay <= 4 ? "dni" : "dní"}`}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {/* FAB — quick add expense */}
+      <Link
+        href="/budget"
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
+        title="Pridať výdavok"
+      >
+        <Plus className="w-6 h-6" />
+      </Link>
     </AppShell>
   );
 }

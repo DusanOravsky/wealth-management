@@ -198,6 +198,7 @@ export interface Trip {
   icon: string; // emoji
   dateFrom: string; // YYYY-MM-DD
   dateTo: string;   // YYYY-MM-DD
+  budgetLimit?: number; // EUR
   note?: string;
 }
 

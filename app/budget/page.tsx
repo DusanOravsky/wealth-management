@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw, Download, TrendingUp, TrendingDown, Minus, Upload, QrCode, MapPin } from "lucide-react";
 import { toast } from "sonner";
+import { haptic } from "@/lib/haptic";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import type { BudgetCategory, Expense, RecurringExpense, Trip } from "@/lib/types";
 import type { ParsedReceipt } from "@/components/ReceiptScannerDialog";
@@ -106,6 +107,8 @@ export default function BudgetPage() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  const touchStartX = useRef<number>(0);
+  const notified80Ref = useRef<Set<string>>(new Set());
   const [categories, setCategories] = useState<BudgetCategory[]>(() => {
     const saved = loadBudgetCategories();
     return saved.length > 0 ? saved : DEFAULT_CATEGORIES;
@@ -125,7 +128,7 @@ export default function BudgetPage() {
   // Trip dialog
   const [tripOpen, setTripOpen] = useState(false);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
-  const [tripForm, setTripForm] = useState({ name: "", icon: "✈️", dateFrom: today.toISOString().slice(0, 10), dateTo: today.toISOString().slice(0, 10), note: "" });
+  const [tripForm, setTripForm] = useState({ name: "", icon: "✈️", dateFrom: today.toISOString().slice(0, 10), dateTo: today.toISOString().slice(0, 10), budgetLimit: 0, note: "" });
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
 
   // Category dialog
@@ -176,6 +179,25 @@ export default function BudgetPage() {
       return acc;
     }, {});
   }, [categories, allMonthExpensesOnly]);
+
+  // 80% budget limit notifications
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    for (const cat of categories) {
+      if (cat.monthlyLimit <= 0) continue;
+      const spent = catTotals[cat.id] ?? 0;
+      const pct = spent / cat.monthlyLimit;
+      const key = `${cat.id}-${year}-${month}`;
+      if (pct >= 0.8 && pct < 1 && !notified80Ref.current.has(key)) {
+        notified80Ref.current.add(key);
+        new Notification(`Rozpočet: ${cat.name}`, {
+          body: `Dosiahol si ${(pct * 100).toFixed(0)}% limitu (${fmt(spent)} / ${fmt(cat.monthlyLimit)})`,
+          icon: "/wealth-management/icon-192.png",
+        });
+      }
+    }
+  }, [catTotals, categories, year, month]);
 
   const recurringIncome = useMemo(
     () => getRecurringIncomeForMonth(recurring, year, month),
@@ -314,31 +336,31 @@ export default function BudgetPage() {
     saveExpenses(updated);
     setExpenses(updated);
     setExpOpen(false);
-    toast.success(editingExp ? "Výdavok upravený." : "Výdavok pridaný.");
+    haptic("light"); toast.success(editingExp ? "Výdavok upravený." : "Výdavok pridaný.");
   }
   function deleteExp(id: string) {
     const updated = expenses.filter((e) => e.id !== id);
     saveExpenses(updated);
     setExpenses(updated);
-    toast.success("Výdavok odstránený.");
+    haptic("medium"); toast.success("Výdavok odstránený.");
   }
 
   // ── Trip CRUD ──
   function openAddTrip() {
     setEditingTrip(null);
-    setTripForm({ name: "", icon: "✈️", dateFrom: today.toISOString().slice(0, 10), dateTo: today.toISOString().slice(0, 10), note: "" });
+    setTripForm({ name: "", icon: "✈️", dateFrom: today.toISOString().slice(0, 10), dateTo: today.toISOString().slice(0, 10), budgetLimit: 0, note: "" });
     setTripOpen(true);
   }
   function openEditTrip(t: Trip) {
     setEditingTrip(t);
-    setTripForm({ name: t.name, icon: t.icon, dateFrom: t.dateFrom, dateTo: t.dateTo, note: t.note ?? "" });
+    setTripForm({ name: t.name, icon: t.icon, dateFrom: t.dateFrom, dateTo: t.dateTo, budgetLimit: t.budgetLimit ?? 0, note: t.note ?? "" });
     setTripOpen(true);
   }
   function saveTrip() {
     if (!tripForm.name || !tripForm.dateFrom || !tripForm.dateTo) {
       toast.error("Vyplň názov a dátumy."); return;
     }
-    const entry: Trip = { id: editingTrip?.id ?? crypto.randomUUID(), ...tripForm };
+    const entry: Trip = { id: editingTrip?.id ?? crypto.randomUUID(), ...tripForm, budgetLimit: tripForm.budgetLimit > 0 ? tripForm.budgetLimit : undefined };
     const updated = editingTrip
       ? trips.map((t) => t.id === editingTrip.id ? entry : t)
       : [...trips, entry];
@@ -453,6 +475,27 @@ export default function BudgetPage() {
       const descIdx = header.findIndex((h) => ["description","popis","note","memo","text","reference","verwendung"].some((k) => h.includes(k)));
       if (amountIdx === -1) { toast.error("Nenašiel sa stĺpec so sumou. Skontroluj formát CSV."); return; }
       const defaultCatId = categories[0]?.id ?? "other";
+      // Keyword → category matching
+      const KEYWORD_MAP: Record<string, string[]> = {
+        food: ["lidl","billa","tesco","kaufland","albert","spar","coop","jedlo","potraviny","pizza","burger","mcdonalds","kfc","reštaurácia","restaurant","gastro","kebab"],
+        transport: ["benzin","nafta","fuel","shell","omv","orlen","mol","autobus","vlak","taxi","uber","bolt","parking","parkovanie","diaľnica","toll"],
+        housing: ["nájom","rent","bývanie","energie","electric","plyn","voda","komunal","teplo","internet","cable"],
+        health: ["lekáreň","lekárna","lekár","doktor","nemocnica","zdravie","pharmacy","lekar","lekarnic"],
+        entertain: ["netflix","spotify","youtube","hbo","disney","kino","cinema","zábava","entertainment","steam","gaming"],
+        clothing: ["zara","hm","h&m","mango","oblečenie","topanky","shoes","fashion"],
+        education: ["škola","kurz","kniha","vzdelanie","udemy","coursera","amazon kindle"],
+        insurance: ["poistenie","allianz","kooperativa","generali","uniqa","csob"],
+      };
+      const guessCategoryId = (desc: string): string => {
+        const lower = desc.toLowerCase();
+        for (const cat of categories) {
+          const catLower = cat.name.toLowerCase();
+          if (lower.includes(catLower)) return cat.id;
+          const keywords = KEYWORD_MAP[cat.id] ?? [];
+          if (keywords.some((k) => lower.includes(k))) return cat.id;
+        }
+        return defaultCatId;
+      };
       const imported: Expense[] = [];
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(/[,;]/).map((c) => c.trim().replace(/^"|"$/g, ""));
@@ -462,7 +505,7 @@ export default function BudgetPage() {
         const parsedDate = dateStr ? new Date(dateStr.split(".").reverse().join("-")) : new Date(year, month, 1);
         const isoDate = isNaN(parsedDate.getTime()) ? `${year}-${String(month + 1).padStart(2, "0")}-01` : parsedDate.toISOString().slice(0, 10);
         const description = descIdx >= 0 ? (cols[descIdx] ?? "Import").slice(0, 80) : "Import z CSV";
-        imported.push({ id: crypto.randomUUID(), categoryId: defaultCatId, amount: rawAmount, currency: "EUR", date: isoDate, description });
+        imported.push({ id: crypto.randomUUID(), categoryId: guessCategoryId(description), amount: rawAmount, currency: "EUR", date: isoDate, description });
       }
       if (imported.length === 0) { toast.error("Žiadne platné riadky. Skontroluj formát."); return; }
       const updated = [...expenses, ...imported];
@@ -486,7 +529,14 @@ export default function BudgetPage() {
 
   return (
     <AppShell>
-      <div className="p-4 md:p-6 space-y-4 md:space-y-6 page-enter">
+      <div
+        className="p-4 md:p-6 space-y-4 md:space-y-6 page-enter"
+        onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+        onTouchEnd={(e) => {
+          const diff = touchStartX.current - e.changedTouches[0].clientX;
+          if (Math.abs(diff) > 60) { diff > 0 ? nextMonth() : prevMonth(); }
+        }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -932,7 +982,13 @@ export default function BudgetPage() {
                           </div>
                           <div className="text-right shrink-0">
                             <p className="font-bold text-sm">{fmt(tripTotal)}</p>
-                            <p className="text-xs text-muted-foreground">{tripExpenses.length} výdavkov</p>
+                            {trip.budgetLimit ? (
+                              <p className={`text-xs font-medium ${tripTotal > trip.budgetLimit ? "text-red-500" : "text-muted-foreground"}`}>
+                                / {fmt(trip.budgetLimit)} ({Math.round((tripTotal / trip.budgetLimit) * 100)}%)
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">{tripExpenses.length} výd.</p>
+                            )}
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <Button variant="ghost" size="icon" onClick={(ev) => { ev.stopPropagation(); openAddExp(trip.id); }}>
@@ -946,6 +1002,14 @@ export default function BudgetPage() {
                             </Button>
                           </div>
                         </div>
+                        {trip.budgetLimit && trip.budgetLimit > 0 && (
+                          <div className="mt-2">
+                            <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full transition-all"
+                                style={{ width: `${Math.min(100, (tripTotal / trip.budgetLimit) * 100)}%`, background: tripTotal > trip.budgetLimit ? "#ef4444" : "#6366f1" }} />
+                            </div>
+                          </div>
+                        )}
                         {isExpanded && (
                           <div className="mt-3 space-y-1.5 border-t pt-3">
                             {tripExpenses.length === 0 ? (
@@ -1263,6 +1327,10 @@ export default function BudgetPage() {
                 <label className="text-xs text-muted-foreground mb-1 block">Do</label>
                 <Input type="date" value={tripForm.dateTo} onChange={(e) => setTripForm({ ...tripForm, dateTo: e.target.value })} />
               </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Rozpočet (€, voliteľné)</label>
+              <Input type="number" min="0" step="50" placeholder="napr. 1500" value={tripForm.budgetLimit || ""} onChange={(e) => setTripForm({ ...tripForm, budgetLimit: parseFloat(e.target.value) || 0 })} />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Poznámka (voliteľné)</label>

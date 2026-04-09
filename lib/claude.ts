@@ -1,8 +1,16 @@
-import type { PortfolioSummary, Recommendation, Insurance, BudgetCategory, Expense, RecurringExpense } from "./types";
+import type { PortfolioSummary, Recommendation, Insurance, BudgetCategory, Expense, RecurringExpense, FinancialGoal } from "./types";
 
 export interface BudgetContext {
   monthlyIncome: number;
   topCategories: { name: string; icon: string; monthlyAvg: number; limit: number }[];
+}
+
+export interface GoalContext {
+  name: string;
+  targetAmount: number;
+  currency: string;
+  progress: number;
+  daysLeft: number | null;
 }
 
 const CLAUDE_API = "https://api.anthropic.com/v1/messages";
@@ -27,7 +35,17 @@ function extractJsonArray(text: string): string {
   return text.slice(start);
 }
 
-function buildPrompt(summary: PortfolioSummary, budget?: BudgetContext): string {
+export function buildGoalContexts(goals: FinancialGoal[], totalEur: number, rates: Record<string, number>): GoalContext[] {
+  return goals.map((g) => {
+    const rate = rates[g.currency] ?? 1;
+    const currentEur = g.currentAmount != null ? g.currentAmount / rate : totalEur;
+    const progress = Math.min(100, ((currentEur * rate) / g.targetAmount) * 100);
+    const daysLeft = g.deadline ? Math.ceil((new Date(g.deadline).getTime() - Date.now()) / 86400000) : null;
+    return { name: g.name, targetAmount: g.targetAmount, currency: g.currency, progress, daysLeft };
+  }).filter((g) => g.progress < 100);
+}
+
+function buildPrompt(summary: PortfolioSummary, budget?: BudgetContext, goalContexts?: GoalContext[]): string {
   const lines = summary.assets.map(
     (a) => `- ${a.label} (${a.category}): €${a.valueEur.toFixed(2)}`
   );
@@ -55,11 +73,20 @@ Výdavky podľa kategórií (mes. priemer):
 ${catLines.join("\n")}`;
   }
 
+  let goalsSection = "";
+  if (goalContexts && goalContexts.length > 0) {
+    const goalLines = goalContexts.map((g) => {
+      const deadline = g.daysLeft !== null ? ` · deadline o ${g.daysLeft}d` : "";
+      return `  - ${g.name}: ${g.progress.toFixed(0)}% z ${g.targetAmount.toLocaleString()} ${g.currency}${deadline}`;
+    });
+    goalsSection = `\n\nFinančné ciele (nedosiahnuté):\n${goalLines.join("\n")}`;
+  }
+
   const catTypes = budget && budget.topCategories.length > 0
     ? ` | "budget"`
     : "";
 
-  return `Si osobný finančný poradca. Analyzuj nasledujúce portfólio${budget ? " a rozpočet" : ""} a poskytni konkrétne odporúčania v slovenčine.
+  return `Si osobný finančný poradca. Analyzuj nasledujúce portfólio${budget ? " a rozpočet" : ""}${goalContexts?.length ? " a finančné ciele" : ""} a poskytni konkrétne odporúčania v slovenčine.
 
 Celková hodnota portfólia: €${summary.totalEur.toFixed(2)}
 Posledná aktualizácia: ${summary.lastUpdated}
@@ -68,7 +95,7 @@ Rozloženie aktív:
 ${lines.join("\n")}
 
 Alokácia:
-${allocations.join("\n")}${budgetSection}
+${allocations.join("\n")}${budgetSection}${goalsSection}
 
 Poskytni 5–8 konkrétnych odporúčaní vo formáte JSON. Každé odporúčanie musí obsahovať:
 - category: "allocation" | "risk" | "opportunity" | "warning"${catTypes}
@@ -81,7 +108,7 @@ Zohľadni:
 2. Riziko (volatilita krypta, koncentrácia komodít)
 3. Likviditu (hotovosť vs. nelikvidné aktíva)
 4. Slovenský kontext (II. pilier je viazaný do dôchodku)
-5. Ochranu pred infláciou${budget ? "\n6. Mieru úspor, kategórie kde sa míňa najviac, prekročené limity" : ""}
+5. Ochranu pred infláciou${budget ? "\n6. Mieru úspor, kategórie kde sa míňa najviac, prekročené limity" : ""}${goalContexts?.length ? "\n7. Pokrok k finančným cieľom, realistickosť termínov" : ""}
 
 Odpovedaj VÝHRADNE validným JSON poľom, žiadny markdown, žiadne vysvetlenia.`;
 }
@@ -197,9 +224,10 @@ export function buildBudgetContext(
 export async function fetchRecommendations(
   summary: PortfolioSummary,
   claudeApiKey: string,
-  budget?: BudgetContext
+  budget?: BudgetContext,
+  goals?: GoalContext[]
 ): Promise<Recommendation[]> {
-  const prompt = buildPrompt(summary, budget);
+  const prompt = buildPrompt(summary, budget, goals);
 
   const res = await fetch(CLAUDE_API, {
     method: "POST",
