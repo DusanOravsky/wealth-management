@@ -1,4 +1,4 @@
-const CACHE = "wm-v7";
+const CACHE = "wm-v8";
 const BASE = "/wealth-management";
 
 const PRECACHE = [
@@ -25,9 +25,10 @@ const PRECACHE = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then(async (cache) => {
-      // Cache each URL individually — cache.addAll is atomic and silently
-      // drops everything if even one URL fails (e.g. redirect on GitHub Pages)
+    (async () => {
+      const cache = await caches.open(CACHE);
+
+      // Cache HTML pages
       await Promise.allSettled(
         PRECACHE.map((url) =>
           fetch(url, { redirect: "follow" })
@@ -35,7 +36,30 @@ self.addEventListener("install", (event) => {
             .catch(() => {})
         )
       );
-    })
+
+      // Cache all _next/static/ assets by extracting them from the app shell HTML.
+      // Without this, JS/CSS files are only cached after the first online visit,
+      // so the app fails offline on first install.
+      try {
+        const r = await fetch(BASE + "/", { redirect: "follow" });
+        if (r.ok) {
+          const html = await r.text();
+          const staticPaths = [
+            ...new Set(
+              [...html.matchAll(/["'](\/wealth-management\/_next\/static\/[^"']+)["']/g)]
+                .map((m) => m[1])
+            ),
+          ];
+          await Promise.allSettled(
+            staticPaths.map((path) =>
+              fetch(path)
+                .then((res) => { if (res.ok) return cache.put(path, res); })
+                .catch(() => {})
+            )
+          );
+        }
+      } catch {}
+    })()
   );
   // Don't skipWaiting — wait for user to approve the update via popup
 });
