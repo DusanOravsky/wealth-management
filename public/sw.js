@@ -1,23 +1,23 @@
-const CACHE = "wm-v6";
+const CACHE = "wm-v7";
 const BASE = "/wealth-management";
 
 const PRECACHE = [
   BASE + "/",
-  BASE + "/dashboard",
-  BASE + "/commodities",
-  BASE + "/cash",
-  BASE + "/pension",
-  BASE + "/bank",
-  BASE + "/crypto",
-  BASE + "/stocks",
-  BASE + "/realestate",
-  BASE + "/budget",
-  BASE + "/insurance",
-  BASE + "/planning",
-  BASE + "/goals",
-  BASE + "/alerts",
-  BASE + "/advisor",
-  BASE + "/settings",
+  BASE + "/dashboard/",
+  BASE + "/commodities/",
+  BASE + "/cash/",
+  BASE + "/pension/",
+  BASE + "/bank/",
+  BASE + "/crypto/",
+  BASE + "/stocks/",
+  BASE + "/realestate/",
+  BASE + "/budget/",
+  BASE + "/insurance/",
+  BASE + "/planning/",
+  BASE + "/goals/",
+  BASE + "/alerts/",
+  BASE + "/advisor/",
+  BASE + "/settings/",
   BASE + "/manifest.json",
   BASE + "/icon-192.png",
   BASE + "/icon-512.png",
@@ -25,7 +25,17 @@ const PRECACHE = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(PRECACHE).catch(() => {}))
+    caches.open(CACHE).then(async (cache) => {
+      // Cache each URL individually — cache.addAll is atomic and silently
+      // drops everything if even one URL fails (e.g. redirect on GitHub Pages)
+      await Promise.allSettled(
+        PRECACHE.map((url) =>
+          fetch(url, { redirect: "follow" })
+            .then((r) => { if (r.ok) return cache.put(url, r); })
+            .catch(() => {})
+        )
+      );
+    })
   );
   // Don't skipWaiting — wait for user to approve the update via popup
 });
@@ -75,6 +85,15 @@ self.addEventListener("fetch", (event) => {
         caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()));
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() =>
+        // Try exact match, then with trailing slash (GitHub Pages redirect)
+        caches.match(event.request).then(
+          (cached) =>
+            cached ||
+            caches.match(
+              url.pathname.endsWith("/") ? event.request.url : event.request.url + "/"
+            )
+        )
+      )
   );
 });
